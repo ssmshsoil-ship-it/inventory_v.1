@@ -27,22 +27,58 @@ class SoilDataPreprocessor:
     # 파종기 월
     PLANTING_MONTHS = [2, 3, 4, 5]
     
-    # 한국 공휴일 (예시 - 실제로는 외부 라이브러리나 API 사용 권장)
-    HOLIDAYS_2024 = [
-        '2024-01-01',  # 신정
-        '2024-02-09', '2024-02-10', '2024-02-11', '2024-02-12',  # 설날
-        '2024-03-01',  # 삼일절
-        '2024-04-10',  # 총선
-        '2024-05-05',  # 어린이날
-        '2024-05-06',  # 대체공휴일
-        '2024-05-15',  # 석가탄신일
-        '2024-06-06',  # 현충일
-        '2024-08-15',  # 광복절
-        '2024-09-16', '2024-09-17', '2024-09-18',  # 추석
-        '2024-10-03',  # 개천절
-        '2024-10-09',  # 한글날
-        '2024-12-25',  # 성탄절
-    ]
+    # 한국 공휴일 (2022-2025년)
+    HOLIDAYS = {
+        2022: [
+            '2022-01-01', '2022-01-31', '2022-02-01', '2022-02-02',  # 신정, 설날
+            '2022-03-01', '2022-03-09',  # 삼일절, 대선
+            '2022-05-05', '2022-05-08',  # 어린이날, 석가탄신일
+            '2022-06-01', '2022-06-06',  # 지방선거, 현충일
+            '2022-08-15',  # 광복절
+            '2022-09-09', '2022-09-10', '2022-09-11', '2022-09-12',  # 추석
+            '2022-10-03', '2022-10-09',  # 개천절, 한글날
+            '2022-12-25',  # 성탄절
+        ],
+        2023: [
+            '2023-01-01', '2023-01-21', '2023-01-22', '2023-01-23', '2023-01-24',  # 신정, 설날
+            '2023-03-01',  # 삼일절
+            '2023-05-05', '2023-05-27',  # 어린이날, 석가탄신일
+            '2023-06-06',  # 현충일
+            '2023-08-15',  # 광복절
+            '2023-09-28', '2023-09-29', '2023-09-30',  # 추석
+            '2023-10-03', '2023-10-09',  # 개천절, 한글날
+            '2023-12-25',  # 성탄절
+        ],
+        2024: [
+            '2024-01-01',  # 신정
+            '2024-02-09', '2024-02-10', '2024-02-11', '2024-02-12',  # 설날
+            '2024-03-01',  # 삼일절
+            '2024-04-10',  # 총선
+            '2024-05-05', '2024-05-06', '2024-05-15',  # 어린이날, 대체공휴일, 석가탄신일
+            '2024-06-06',  # 현충일
+            '2024-08-15',  # 광복절
+            '2024-09-16', '2024-09-17', '2024-09-18',  # 추석
+            '2024-10-03', '2024-10-09',  # 개천절, 한글날
+            '2024-12-25',  # 성탄절
+        ],
+        2025: [
+            '2025-01-01', '2025-01-28', '2025-01-29', '2025-01-30',  # 신정, 설날
+            '2025-03-01', '2025-03-03',  # 삼일절, 대체공휴일
+            '2025-05-05', '2025-05-06',  # 어린이날, 석가탄신일
+            '2025-06-06',  # 현충일
+            '2025-08-15',  # 광복절
+            '2025-10-03', '2025-10-05', '2025-10-06', '2025-10-07', '2025-10-08',  # 개천절, 추석
+            '2025-10-09',  # 한글날
+            '2025-12-25',  # 성탄절
+        ],
+    }
+    
+    # 농번기 주요 공휴일 (상토 수요에 큰 영향)
+    MAJOR_FARMING_HOLIDAYS = {
+        '설날': '농번기 시작 전 대량 주문',
+        '삼일절': '파종 준비 시작',
+        '식목일': '파종 본격화',
+    }
     
     def __init__(self, df):
         """
@@ -73,8 +109,11 @@ class SoilDataPreprocessor:
         - is_planting_season: 파종기 여부
         - holiday_effect: 파종기 중 휴일 전후 효과 (전 3일, 후 3일)
         """
-        # 공휴일 여부
-        holidays = pd.to_datetime(self.HOLIDAYS_2024)
+        # 공휴일 여부 (연도별)
+        all_holidays = []
+        for year, holidays in self.HOLIDAYS.items():
+            all_holidays.extend(holidays)
+        holidays = pd.to_datetime(all_holidays)
         self.df['is_holiday'] = self.df['date'].isin(holidays)
         
         # 주말 여부 (토요일=5, 일요일=6)
@@ -92,15 +131,23 @@ class SoilDataPreprocessor:
         # 휴일 이후 경과 일수 계산
         self.df['days_from_holiday'] = self._calculate_days_from_last_holiday()
         
-        # 파종기 중 휴일 전후 효과 (전 3일, 후 3일)
+        # 파종기 중 휴일 전후 효과 (전 5일, 후 3일)
+        # 농번기 시작 전 휴일에 주문이 몰리는 패턴 반영
         self.df['holiday_effect'] = 0
         mask_planting = self.df['is_planting_season']
         
-        # 휴일 전 3일
-        self.df.loc[mask_planting & (self.df['days_to_holiday'] <= 3) & (self.df['days_to_holiday'] >= 0), 'holiday_effect'] = 1
+        # 휴일 전 5일 (주문 증가 기간)
+        self.df.loc[mask_planting & (self.df['days_to_holiday'] <= 5) & (self.df['days_to_holiday'] >= 1), 'holiday_effect'] = 2
         
-        # 휴일 후 3일
-        self.df.loc[mask_planting & (self.df['days_from_holiday'] <= 3) & (self.df['days_from_holiday'] >= 0), 'holiday_effect'] = -1
+        # 휴일 당일
+        self.df.loc[mask_planting & (self.df['days_to_holiday'] == 0), 'holiday_effect'] = 1
+        
+        # 휴일 후 3일 (주문 감소 기간)
+        self.df.loc[mask_planting & (self.df['days_from_holiday'] <= 3) & (self.df['days_from_holiday'] >= 1), 'holiday_effect'] = -1
+        
+        # 설날/추석 등 주요 명절 전후 효과 강화
+        self.df['is_major_holiday'] = self._check_major_holidays()
+        self.df.loc[mask_planting & self.df['is_major_holiday'] & (self.df['days_to_holiday'] <= 7), 'holiday_effect'] = 3
         
         return self
     
@@ -126,6 +173,24 @@ class SoilDataPreprocessor:
                     days_to_holiday.append(999)  # 휴일이 없으면 큰 값
         
         return days_to_holiday
+    
+    def _check_major_holidays(self):
+        """주요 명절(설날, 추석) 여부 확인"""
+        is_major = []
+        
+        for date in self.df['date']:
+            year = date.year
+            month = date.month
+            day = date.day
+            
+            # 설날 (음력 1월 1일 전후) - 대략 1월 말~2월 중순
+            # 추석 (음력 8월 15일 전후) - 대략 9월 중순~10월 초
+            is_seollal = (month in [1, 2]) and (15 <= day <= 28 or day <= 15)
+            is_chuseok = (month in [9, 10]) and (1 <= day <= 20)
+            
+            is_major.append(is_seollal or is_chuseok)
+        
+        return is_major
     
     def _calculate_days_from_last_holiday(self):
         """마지막 휴일 이후 경과 일수 계산"""
@@ -243,7 +308,13 @@ class SoilDataPreprocessor:
                 'is_planting_season: 파종기(2~5월) 여부',
                 'days_to_holiday: 다음 휴일까지 남은 일수',
                 'days_from_holiday: 휴일 이후 경과 일수',
-                'holiday_effect: 파종기 중 휴일 전후 효과 (-1: 휴일 후 3일, 0: 평일, 1: 휴일 전 3일)'
+                'is_major_holiday: 주요 명절(설날/추석) 여부',
+                'holiday_effect: 파종기 중 휴일 전후 효과',
+                '  - 3: 주요 명절 전 7일 (대량 주문 기간)',
+                '  - 2: 일반 휴일 전 5일 (주문 증가)',
+                '  - 1: 휴일 당일',
+                '  - 0: 평일',
+                '  - -1: 휴일 후 3일 (주문 감소)'
             ],
             '누적 기온 변수': [
                 'temp_3week_avg: 최근 3주간 평균 기온',
