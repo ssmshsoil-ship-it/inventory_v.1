@@ -506,6 +506,11 @@ class SoilDemandTrainer:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         self.model.save_model(save_path)
         print(f"\n모델 저장 완료: {save_path}")
+        
+        # 최적 모델도 별도로 저장
+        best_model_path = 'models/best_model.cbm'
+        self.model.save_model(best_model_path)
+        print(f"최적 모델 저장 완료: {best_model_path}")
     
     def run_full_pipeline(self, data_path=None):
         """전체 학습 파이프라인 실행"""
