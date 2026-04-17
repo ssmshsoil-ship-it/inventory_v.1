@@ -5,11 +5,13 @@
 - 휴일 효과 변수 생성 (파종기 중 공휴일/주말 전후)
 - 누적 기온 계산 (최근 3주간 평균 기온)
 - 지역 가중치 적용 (성화 공장 주요 납품처)
+- 원가 데이터 통합 (cost 엑셀 파일)
 """
 
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 class SoilDataPreprocessor:
@@ -282,13 +284,74 @@ class SoilDataPreprocessor:
         
         return self
     
-    def preprocess_all(self, temp_column='temperature', region_column='region'):
+    def add_cost_features(self, cost_file_path='data/cost.xlsx'):
+        """
+        원가 데이터 추가
+        
+        Args:
+            cost_file_path: cost 엑셀 파일 경로
+        """
+        cost_path = Path(cost_file_path)
+        
+        if not cost_path.exists():
+            print(f"경고: cost 파일을 찾을 수 없습니다: {cost_file_path}")
+            print("원가 데이터 없이 진행합니다.")
+            return self
+        
+        try:
+            # cost 엑셀 파일 로드
+            cost_df = pd.read_excel(cost_path)
+            print(f"원가 데이터 로드 완료: {len(cost_df)}행")
+            
+            # 날짜 컬럼 찾기 (일반적인 날짜 컬럼명들)
+            date_cols = [col for col in cost_df.columns if any(
+                keyword in col.lower() for keyword in ['date', '날짜', '일자', 'day']
+            )]
+            
+            if date_cols:
+                date_col = date_cols[0]
+                cost_df[date_col] = pd.to_datetime(cost_df[date_col])
+                
+                # 원가 관련 컬럼 찾기
+                cost_cols = [col for col in cost_df.columns if any(
+                    keyword in col.lower() for keyword in ['cost', '원가', '단가', 'price', '가격']
+                )]
+                
+                if cost_cols:
+                    # 날짜 기준으로 병합
+                    merge_cols = [date_col] + cost_cols
+                    self.df = self.df.merge(
+                        cost_df[merge_cols],
+                        left_on='date',
+                        right_on=date_col,
+                        how='left'
+                    )
+                    
+                    # 결측치 forward fill (이전 값으로 채우기)
+                    for col in cost_cols:
+                        if col in self.df.columns:
+                            self.df[col] = self.df[col].fillna(method='ffill')
+                    
+                    print(f"원가 피처 추가 완료: {cost_cols}")
+                else:
+                    print("경고: 원가 관련 컬럼을 찾을 수 없습니다.")
+            else:
+                print("경고: 날짜 컬럼을 찾을 수 없습니다.")
+                
+        except Exception as e:
+            print(f"원가 데이터 로드 중 오류 발생: {e}")
+            print("원가 데이터 없이 진행합니다.")
+        
+        return self
+    
+    def preprocess_all(self, temp_column='temperature', region_column='region', cost_file_path='data/cost.xlsx'):
         """
         모든 전처리 단계를 한 번에 실행
         
         Args:
             temp_column: 기온 데이터가 있는 컬럼명
             region_column: 지역 정보가 있는 컬럼명
+            cost_file_path: cost 엑셀 파일 경로
         
         Returns:
             전처리된 DataFrame
@@ -296,6 +359,7 @@ class SoilDataPreprocessor:
         self.add_holiday_features()
         self.add_cumulative_temperature(temp_column)
         self.add_regional_weighted_temperature(region_column, temp_column)
+        self.add_cost_features(cost_file_path)
         
         return self.df
     
@@ -326,6 +390,10 @@ class SoilDataPreprocessor:
                 'weighted_temperature: 가중치 적용 기온',
                 'daily_weighted_temp: 날짜별 가중 평균 기온',
                 'weighted_temp_3week_avg: 가중 기온의 3주 이동평균'
+            ],
+            '원가 변수': [
+                'cost 엑셀 파일에서 로드된 원가 관련 컬럼들',
+                '(파일 내용에 따라 자동으로 추가됨)'
             ]
         }
         

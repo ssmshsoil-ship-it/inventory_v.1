@@ -110,9 +110,13 @@ class SoilDemandPredictor:
         """
         print("데이터 전처리 중...")
         
-        # 전처리 수행
+        # 전처리 수행 (cost 데이터 포함)
         preprocessor = SoilDataPreprocessor(df)
-        processed_df = preprocessor.preprocess_all(temp_column='temperature', region_column='region')
+        processed_df = preprocessor.preprocess_all(
+            temp_column='temperature', 
+            region_column='region',
+            cost_file_path='data/cost.xlsx'
+        )
         
         # 추가 피처 생성
         processed_df['year'] = processed_df['date'].dt.year
