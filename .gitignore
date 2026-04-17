@@ -1,0 +1,30 @@
+# 대용량 데이터 파일
+data/*.xlsx
+data/*.xls
+data/*.csv
+data/weather/
+data/features/
+data/processed/
+
+# 학습된 모델 (용량 큰 경우)
+models/*.cbm
+models/*.pkl
+models/*.bin
+
+# CatBoost 학습 로그
+catboost_info/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# 환경
+.env
+*.log
+
+# 추적할 파일 (예외) - 빈 폴더 유지용
+!models/.gitkeep
+!reports/.gitkeep
+.aider*
