@@ -198,14 +198,59 @@ class WeatherDataCollector:
         
         return combined_df
     
-    def preprocess_weather_data(self, raw_data_path='data/weather_historical.csv',
-                                output_path='data/weather_processed.csv'):
+    def load_existing_weather_files(self, weather_dir='data/weather'):
         """
-        수집된 기상 데이터 전처리
+        기존 기상 데이터 파일들을 로드하여 통합
         
         Args:
-            raw_data_path: 원본 데이터 경로
+            weather_dir: 기상 데이터 폴더 경로
+        
+        Returns:
+            통합된 DataFrame
+        """
+        weather_path = Path(weather_dir)
+        
+        if not weather_path.exists():
+            print(f"  ⚠️  기존 기상 데이터 폴더가 없습니다: {weather_dir}")
+            return None
+        
+        csv_files = list(weather_path.glob('*.csv'))
+        
+        if not csv_files:
+            print(f"  ⚠️  기존 기상 데이터 파일이 없습니다: {weather_dir}")
+            return None
+        
+        print(f"\n📂 기존 기상 데이터 파일 로드 중...")
+        print(f"  폴더: {weather_dir}")
+        print(f"  파일 수: {len(csv_files)}개")
+        
+        all_data = []
+        for csv_file in sorted(csv_files):
+            try:
+                df = pd.read_csv(csv_file, encoding='utf-8-sig')
+                all_data.append(df)
+                print(f"  ✓ {csv_file.name}: {len(df):,}행")
+            except Exception as e:
+                print(f"  ✗ {csv_file.name}: 로드 실패 - {e}")
+        
+        if not all_data:
+            return None
+        
+        combined_df = pd.concat(all_data, ignore_index=True)
+        print(f"\n  ✅ 기존 데이터 로드 완료: {len(combined_df):,}행")
+        
+        return combined_df
+    
+    def preprocess_weather_data(self, raw_data_path='data/weather_historical.csv',
+                                output_path='data/weather_processed.csv',
+                                existing_weather_dir='data/weather'):
+        """
+        수집된 기상 데이터 전처리 (기존 파일과 병합)
+        
+        Args:
+            raw_data_path: 원본 데이터 경로 (API로 수집한 데이터)
             output_path: 전처리된 데이터 저장 경로
+            existing_weather_dir: 기존 기상 데이터 폴더 경로
         
         Returns:
             전처리된 DataFrame
@@ -214,9 +259,30 @@ class WeatherDataCollector:
         print("기상 데이터 전처리 시작")
         print(f"{'='*70}")
         
-        # 데이터 로드
-        df = pd.read_csv(raw_data_path, encoding='utf-8-sig')
-        print(f"원본 데이터: {len(df):,}행")
+        # 1. API로 수집한 데이터 로드
+        df_api = pd.read_csv(raw_data_path, encoding='utf-8-sig')
+        print(f"API 수집 데이터: {len(df_api):,}행")
+        
+        # 2. 기존 파일 로드
+        df_existing = self.load_existing_weather_files(existing_weather_dir)
+        
+        # 3. 데이터 병합
+        if df_existing is not None:
+            # 기존 데이터도 동일한 형식으로 변환
+            if 'tm' not in df_existing.columns and 'date' in df_existing.columns:
+                df_existing['tm'] = df_existing['date']
+            
+            df = pd.concat([df_api, df_existing], ignore_index=True)
+            print(f"병합 후 데이터: {len(df):,}행")
+            
+            # 중복 제거 (날짜와 지점 기준)
+            if 'tm' in df.columns and 'station_code' in df.columns:
+                before_dedup = len(df)
+                df = df.drop_duplicates(subset=['tm', 'station_code'], keep='last')
+                print(f"중복 제거: {before_dedup - len(df):,}행 제거됨")
+        else:
+            df = df_api
+            print(f"기존 데이터 없음, API 데이터만 사용: {len(df):,}행")
         
         # 날짜 변환
         df['date'] = pd.to_datetime(df['tm'])
@@ -425,27 +491,38 @@ class WeatherDataCollector:
         
         return analysis
     
-    def run_full_pipeline(self, years=20, start_year=None, end_date_str=None):
+    def run_full_pipeline(self, years=20, start_year=None, end_date_str=None, 
+                         existing_weather_dir='data/weather'):
         """
-        전체 파이프라인 실행
+        전체 파이프라인 실행 (API 수집 + 기존 파일 병합)
         
         Args:
             years: 수집할 연도 수 (start_year가 None일 때 사용)
-            start_year: 시작 연도 (예: 2019)
-            end_date_str: 종료 날짜 (예: '2026-04-19')
+            start_year: 시작 연도 (예: 2019) - API로 수집할 시작 연도
+            end_date_str: 종료 날짜 (예: '2022-12-31') - API로 수집할 종료 날짜
+            existing_weather_dir: 기존 기상 데이터 폴더 경로 (2023~2026년 데이터)
         
         Returns:
             분석 결과
         """
-        # 1. 데이터 수집
+        print(f"\n{'='*70}")
+        print("🌤️  통합 기상 데이터 파이프라인")
+        print(f"{'='*70}")
+        print(f"전략:")
+        print(f"  1. API 수집: {start_year or '최근'}년 ~ {end_date_str or '현재'}")
+        print(f"  2. 기존 파일: {existing_weather_dir} (2023~2026년)")
+        print(f"  3. 병합 및 전처리")
+        print(f"{'='*70}")
+        
+        # 1. API로 데이터 수집 (2019~2022년)
         raw_data = self.collect_historical_data(years=years, start_year=start_year, end_date_str=end_date_str)
         
         if raw_data is None:
-            print("\n❌ 데이터 수집 실패")
+            print("\n❌ API 데이터 수집 실패")
             return None
         
-        # 2. 데이터 전처리
-        processed_data = self.preprocess_weather_data()
+        # 2. 데이터 전처리 (기존 파일과 병합)
+        processed_data = self.preprocess_weather_data(existing_weather_dir=existing_weather_dir)
         
         # 3. 패턴 분석
         analysis = self.analyze_weather_patterns()
@@ -454,9 +531,13 @@ class WeatherDataCollector:
         print("✅ 전체 파이프라인 완료!")
         print(f"{'='*70}")
         print("\n생성된 파일:")
-        print("  1. data/weather_historical.csv - 원본 기상 데이터 (전국 일별)")
-        print("  2. data/weather_processed.csv - 전처리된 주차별 데이터")
+        print("  1. data/weather_historical.csv - API 수집 원본 데이터 (2019~2022)")
+        print("  2. data/weather_processed.csv - 통합 전처리 데이터 (2019~2026)")
         print("  3. data/weather_analysis.json - 분석 결과 및 평년값")
+        print("\n데이터 범위:")
+        print(f"  • API 수집: {start_year or '최근'}년 ~ {end_date_str or '현재'}")
+        print(f"  • 기존 파일: 2023년 ~ 2026년 4월")
+        print(f"  • 최종 통합: 2019년 ~ 2026년 4월")
         
         return analysis
 
@@ -464,7 +545,7 @@ class WeatherDataCollector:
 def main():
     """메인 함수"""
     print("=" * 70)
-    print("기상청 API 기상 데이터 수집 시스템")
+    print("기상청 API 기상 데이터 수집 시스템 (2019~2026 통합)")
     print("=" * 70)
     
     # API 키 설정
@@ -473,14 +554,21 @@ def main():
     # 수집기 생성
     collector = WeatherDataCollector(api_key=API_KEY)
     
-    # 전체 파이프라인 실행 (2019년 1월 ~ 2022년 12월)
-    # 2023년~2026년 4월 데이터는 이미 data\weather 폴더에 있음
-    analysis = collector.run_full_pipeline(start_year=2019, end_date_str='2022-12-31')
+    # 전체 파이프라인 실행
+    # - API로 2019년 1월 ~ 2022년 12월 수집
+    # - data\weather 폴더의 2023~2026년 4월 데이터와 병합
+    analysis = collector.run_full_pipeline(
+        start_year=2019, 
+        end_date_str='2022-12-31',
+        existing_weather_dir='data/weather'
+    )
     
     if analysis:
         print("\n" + "=" * 70)
-        print("다음 단계:")
-        print("  1. data/weather_processed.csv를 확인하세요")
+        print("✅ 2019~2026년 통합 완료!")
+        print("=" * 70)
+        print("\n다음 단계:")
+        print("  1. data/weather_processed.csv를 확인하세요 (2019~2026 통합)")
         print("  2. data/weather_analysis.json에서 평년값을 확인하세요")
         print("  3. 이 데이터를 src/predict_future.py에 통합하세요")
         print("  4. src/train.py를 실행하여 모델을 재학습하세요")
