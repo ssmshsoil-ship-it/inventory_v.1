@@ -63,36 +63,83 @@ def load_erp_historical(path: Path) -> pd.DataFrame:
 
 
 def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
+    """
+    통합 기상 데이터 로드 (2019~2026년)
+    
+    우선순위:
+    1. data/weather/weekly_features.csv (weather_data_collector.py 생성)
+    2. data/weather_processed.csv (대체 경로)
+    """
+    # 1순위: weekly_features.csv
     weekly_path = weather_dir / "weekly_features.csv"
-    if True:
+    
+    if weekly_path.exists():
+        print(f"  ✓ 통합 기상 데이터 로드: {weekly_path}")
         weather = pd.read_csv(weekly_path)
-        # 전국 평균
-        weekly = weather.groupby(["year", "week"]).agg(
-            avg_temp=("avg_temp", "mean"),
-            min_temp=("min_temp", "mean"),
-            max_temp=("max_temp", "mean"),
-            total_rain=("total_rain", "mean"),
-            rain_days=("rain_days", "mean"),
-            cold_stress_days=("cold_stress_days", "mean"),
-            warm_days=("warm_days", "mean"),
-            temp_anomaly=("temp_anomaly", "mean"),
-            cum_temp_ytd=("cum_temp_ytd", "mean"),
-        ).reset_index()
-
-        # 벌교(보성 165번) 지역 기상
-        boseong = weather[weather["stnId"] == 165][
-            ["year", "week", "avg_temp", "total_rain", "cold_stress_days", "temp_anomaly"]
-        ].copy()
-        boseong.columns = [
-            "year", "week",
-            "boseong_avg_temp", "boseong_rain",
-            "boseong_cold_stress", "boseong_temp_anomaly",
-        ]
-        weekly = weekly.merge(boseong, on=["year", "week"], how="left")
+        
+        # 전국 평균 (stnId == 999) 또는 전체 평균
+        if 'stnId' in weather.columns:
+            # 전국 평균 데이터만 사용
+            weekly = weather[weather['stnId'] == 999].copy()
+            if len(weekly) == 0:
+                # 전국 평균이 없으면 모든 지점 평균 계산
+                weekly = weather.groupby(["year", "week"]).agg(
+                    avg_temp=("avg_temp", "mean"),
+                    min_temp=("min_temp", "mean"),
+                    max_temp=("max_temp", "mean"),
+                    total_rain=("total_rain", "mean"),
+                    rain_days=("rain_days", "mean"),
+                    cold_stress_days=("cold_stress_days", "mean"),
+                    warm_days=("warm_days", "mean"),
+                    temp_anomaly=("temp_anomaly", "mean"),
+                    cum_temp_ytd=("cum_temp_ytd", "mean"),
+                ).reset_index()
+        else:
+            weekly = weather.copy()
+        
+        # 벌교(보성 165번) 지역 기상 - 있으면 추가
+        if 'stnId' in weather.columns and 165 in weather['stnId'].values:
+            boseong = weather[weather["stnId"] == 165][
+                ["year", "week", "avg_temp", "total_rain", "cold_stress_days", "temp_anomaly"]
+            ].copy()
+            boseong.columns = [
+                "year", "week",
+                "boseong_avg_temp", "boseong_rain",
+                "boseong_cold_stress", "boseong_temp_anomaly",
+            ]
+            weekly = weekly.merge(boseong, on=["year", "week"], how="left")
+        else:
+            # 보성 데이터가 없으면 전국 평균으로 대체
+            weekly["boseong_avg_temp"] = weekly["avg_temp"]
+            weekly["boseong_rain"] = weekly["total_rain"]
+            weekly["boseong_cold_stress"] = weekly["cold_stress_days"]
+            weekly["boseong_temp_anomaly"] = weekly["temp_anomaly"]
+    else:
+        # 2순위: weather_processed.csv
+        processed_path = Path("data/weather_processed.csv")
+        if processed_path.exists():
+            print(f"  ✓ 대체 기상 데이터 로드: {processed_path}")
+            weekly = pd.read_csv(processed_path)
+            # 보성 데이터 없으면 전국 평균으로 대체
+            if "boseong_avg_temp" not in weekly.columns:
+                weekly["boseong_avg_temp"] = weekly["avg_temp"]
+                weekly["boseong_rain"] = weekly.get("total_rain", 0)
+                weekly["boseong_cold_stress"] = weekly.get("cold_stress_days", 0)
+                weekly["boseong_temp_anomaly"] = weekly.get("temp_anomaly", 0)
+        else:
+            raise FileNotFoundError(
+                f"기상 데이터를 찾을 수 없습니다.\n"
+                f"다음 중 하나를 실행하세요:\n"
+                f"  1. python src/weather_data_collector.py (2019~2026 통합 데이터 생성)\n"
+                f"  2. {weekly_path} 또는 {processed_path} 파일 확인"
+            )
 
     weekly = weekly.rename(columns={"year": "ISO연도", "week": "ISO주차"})
     weekly["ISO연도"] = weekly["ISO연도"].astype(int)
     weekly["ISO주차"] = weekly["ISO주차"].astype(int)
+    
+    print(f"  ✓ 기상 데이터: {len(weekly)}주 ({weekly['ISO연도'].min()}~{weekly['ISO연도'].max()}년)")
+    
     return weekly
 
 

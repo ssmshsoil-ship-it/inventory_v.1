@@ -368,18 +368,36 @@ class WeatherDataCollector:
             'cold_stress': 'sum',
         }).reset_index()
         
+        # build_dataset.py와 호환되는 컬럼명으로 변경
         weekly_avg.columns = ['year', 'week', 'avg_temp', 'min_temp', 'max_temp',
-                             'total_rainfall', 'avg_humidity', 'avg_wind_speed',
-                             'avg_temp_range', 'rainy_days', 'growing_degree_sum',
+                             'total_rain', 'avg_humidity', 'avg_wind_speed',
+                             'avg_temp_range', 'rain_days', 'growing_degree_sum',
                              'cold_stress_days']
         
-        # 저장
+        # 추가 파생 변수 (build_dataset.py 호환)
+        weekly_avg['warm_days'] = 0  # 필요시 계산 로직 추가
+        weekly_avg['temp_anomaly'] = 0  # 평년 대비 편차 (분석 단계에서 계산)
+        weekly_avg['cum_temp_ytd'] = weekly_avg.groupby('year')['avg_temp'].cumsum()
+        
+        # 저장 (두 가지 형식)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         weekly_avg.to_csv(output_path, index=False, encoding='utf-8-sig')
         
+        # build_dataset.py 호환을 위한 추가 저장
+        weather_dir = Path('data/weather')
+        weather_dir.mkdir(parents=True, exist_ok=True)
+        weekly_features_path = weather_dir / 'weekly_features.csv'
+        
+        # stnId 컬럼 추가 (전국 평균은 999로 표시)
+        weekly_with_station = weekly_avg.copy()
+        weekly_with_station['stnId'] = 999  # 전국 평균 표시
+        weekly_with_station.to_csv(weekly_features_path, index=False, encoding='utf-8-sig')
+        
         print(f"\n✅ 전처리 완료!")
         print(f"주차별 데이터: {len(weekly_avg):,}행")
-        print(f"저장 위치: {output_path}")
+        print(f"저장 위치:")
+        print(f"  1. {output_path} (분석용)")
+        print(f"  2. {weekly_features_path} (학습용)")
         
         return weekly_avg
     
