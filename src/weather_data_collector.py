@@ -107,24 +107,38 @@ class WeatherDataCollector:
             print(f"  ❌ API 호출 오류: {e}")
             return None
     
-    def collect_historical_data(self, years=20, output_path='data/weather_historical.csv'):
+    def collect_historical_data(self, years=20, output_path='data/weather_historical.csv', 
+                                start_year=None, end_date_str=None):
         """
         과거 N년치 전국 기상 데이터 수집
         
         Args:
-            years: 수집할 연도 수
+            years: 수집할 연도 수 (start_year가 None일 때 사용)
             output_path: 저장 경로
+            start_year: 시작 연도 (예: 2019) - 지정하면 해당 연도 1월 1일부터 수집
+            end_date_str: 종료 날짜 (예: '2026-04-19') - 지정하면 해당 날짜까지 수집
         
         Returns:
             DataFrame
         """
         print(f"\n{'='*70}")
-        print(f"기상 데이터 수집 시작 (최근 {years}년, 전국 {len(self.STATIONS)}개 지점)")
+        
+        # 종료 날짜 설정
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        else:
+            end_date = datetime.now()
+        
+        # 시작 날짜 설정
+        if start_year:
+            start_date = datetime(start_year, 1, 1)
+            years_diff = (end_date - start_date).days / 365
+            print(f"기상 데이터 수집 시작 ({start_year}년 ~ {end_date.year}년, 약 {years_diff:.1f}년, 전국 {len(self.STATIONS)}개 지점)")
+        else:
+            start_date = end_date - timedelta(days=years*365)
+            print(f"기상 데이터 수집 시작 (최근 {years}년, 전국 {len(self.STATIONS)}개 지점)")
+        
         print(f"{'='*70}")
-        
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=years*365)
-        
         print(f"수집 기간: {start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')}")
         
         all_data = []
@@ -411,18 +425,20 @@ class WeatherDataCollector:
         
         return analysis
     
-    def run_full_pipeline(self, years=20):
+    def run_full_pipeline(self, years=20, start_year=None, end_date_str=None):
         """
         전체 파이프라인 실행
         
         Args:
-            years: 수집할 연도 수
+            years: 수집할 연도 수 (start_year가 None일 때 사용)
+            start_year: 시작 연도 (예: 2019)
+            end_date_str: 종료 날짜 (예: '2026-04-19')
         
         Returns:
             분석 결과
         """
         # 1. 데이터 수집
-        raw_data = self.collect_historical_data(years=years)
+        raw_data = self.collect_historical_data(years=years, start_year=start_year, end_date_str=end_date_str)
         
         if raw_data is None:
             print("\n❌ 데이터 수집 실패")
@@ -457,8 +473,8 @@ def main():
     # 수집기 생성
     collector = WeatherDataCollector(api_key=API_KEY)
     
-    # 전체 파이프라인 실행 (최근 20년)
-    analysis = collector.run_full_pipeline(years=20)
+    # 전체 파이프라인 실행 (2019년 1월 ~ 2026년 4월)
+    analysis = collector.run_full_pipeline(start_year=2019, end_date_str='2026-04-19')
     
     if analysis:
         print("\n" + "=" * 70)
