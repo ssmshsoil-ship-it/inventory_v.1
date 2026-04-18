@@ -1,10 +1,18 @@
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 ROOT = Path(__file__).parent.parent
 DATA_DIR      = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 MODELS_DIR    = ROOT / "models"
 REPORTS_DIR   = ROOT / "reports"
+
+# API 키
+WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '048234d69b91cf5b6c18b1381151060d5c5bb1b1dd26b0fcf26d777d7e63fa24')
 
 # 원본 데이터
 MASTER_DB     = DATA_DIR / "master_db_v.0.xlsx"

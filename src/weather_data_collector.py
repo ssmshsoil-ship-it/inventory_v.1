@@ -13,6 +13,7 @@ from pathlib import Path
 import time
 import json
 import warnings
+from urllib.parse import unquote
 warnings.filterwarnings('ignore')
 
 
@@ -64,8 +65,9 @@ class WeatherDataCollector:
         Returns:
             DataFrame
         """
+        # API 키는 인코딩하지 않고 그대로 사용
         params = {
-            'serviceKey': self.api_key,
+            'serviceKey': unquote(self.api_key),  # 혹시 인코딩되어 있다면 디코딩
             'pageNo': '1',
             'numOfRows': '999',
             'dataType': 'JSON',
@@ -77,13 +79,25 @@ class WeatherDataCollector:
         }
         
         try:
+            # requests가 자동으로 인코딩하므로 params 사용
             response = requests.get(self.API_BASE_URL, params=params, timeout=30)
             
             if response.status_code == 200:
                 data = response.json()
                 
-                if 'response' in data and 'body' in data['response']:
-                    body = data['response']['body']
+                # 에러 응답 체크
+                if 'response' in data:
+                    header = data['response'].get('header', {})
+                    result_code = header.get('resultCode', '')
+                    result_msg = header.get('resultMsg', '')
+                    
+                    if result_code != '00':
+                        print(f"  ⚠️  API 오류 [{result_code}]: {result_msg}")
+                        if result_code == '03':  # 인증 오류
+                            print(f"  💡 API 키 확인 필요: {self.api_key[:20]}...")
+                        return None
+                    
+                    body = data['response'].get('body', {})
                     
                     if 'items' in body and body['items']:
                         items = body['items']['item']
@@ -99,8 +113,14 @@ class WeatherDataCollector:
                 else:
                     print(f"  ⚠️  응답 구조 오류: {station_code}")
                     return None
+            elif response.status_code == 403:
+                print(f"  ❌ 403 Forbidden - API 키 인증 실패")
+                print(f"  💡 API 키 확인: {self.api_key[:20]}...")
+                print(f"  💡 .env 파일 또는 config.py의 WEATHER_API_KEY를 확인하세요")
+                return None
             else:
                 print(f"  ⚠️  HTTP 오류 {response.status_code}: {station_code}")
+                print(f"  응답: {response.text[:200]}")
                 return None
                 
         except Exception as e:
@@ -566,11 +586,13 @@ def main():
     print("기상청 API 기상 데이터 수집 시스템 (2019~2026 통합)")
     print("=" * 70)
     
-    # API 키 설정
-    API_KEY = "048234d69b91cf5b6c18b1381151060d5c5bb1b1dd26b0fcf26d777d7e63fa24"
+    # API 키 설정 (config.py에서 로드)
+    from config import WEATHER_API_KEY
+    
+    print(f"\n🔑 API 키 확인: {WEATHER_API_KEY[:20]}... (총 {len(WEATHER_API_KEY)}자)")
     
     # 수집기 생성
-    collector = WeatherDataCollector(api_key=API_KEY)
+    collector = WeatherDataCollector(api_key=WEATHER_API_KEY)
     
     # 전체 파이프라인 실행
     # - API로 2019년 1월 ~ 2022년 12월 수집
