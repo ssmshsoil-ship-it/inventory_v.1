@@ -2,10 +2,12 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-# .env 파일 로드
-load_dotenv()
-
+# 프로젝트 루트 경로 설정
 ROOT = Path(__file__).parent.parent
+
+# 루트 폴더의 .env 파일 명시적으로 로드
+env_path = ROOT / '.env'
+load_dotenv(dotenv_path=env_path)
 DATA_DIR      = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 MODELS_DIR    = ROOT / "models"
