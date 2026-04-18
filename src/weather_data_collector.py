@@ -473,8 +473,9 @@ def main():
     # 수집기 생성
     collector = WeatherDataCollector(api_key=API_KEY)
     
-    # 전체 파이프라인 실행 (2019년 1월 ~ 2026년 4월)
-    analysis = collector.run_full_pipeline(start_year=2019, end_date_str='2026-04-19')
+    # 전체 파이프라인 실행 (2019년 1월 ~ 2022년 12월)
+    # 2023년~2026년 4월 데이터는 이미 data\weather 폴더에 있음
+    analysis = collector.run_full_pipeline(start_year=2019, end_date_str='2022-12-31')
     
     if analysis:
         print("\n" + "=" * 70)
