@@ -89,6 +89,27 @@ def load_notifications():
     return notifications
 
 
+def load_weather_analysis():
+    """기상 데이터 분석 결과 로드"""
+    weather_path = Path('data/weather_analysis.json')
+    if not weather_path.exists():
+        return None
+    
+    with open(weather_path, 'r', encoding='utf-8') as f:
+        analysis = json.load(f)
+    
+    return analysis
+
+
+def load_weather_processed():
+    """전처리된 기상 데이터 로드"""
+    weather_path = Path('data/weather_processed.csv')
+    if not weather_path.exists():
+        return None
+    
+    return pd.read_csv(weather_path, encoding='utf-8-sig')
+
+
 def main():
     """메인 대시보드"""
     
@@ -100,13 +121,15 @@ def main():
     st.sidebar.title("📊 메뉴")
     menu = st.sidebar.radio(
         "선택하세요:",
-        ["📈 수요 예측", "🚛 배차 계획", "📢 기사 알림", "💰 비용 분석", "⚙️ 설정"]
+        ["📈 수요 예측", "🚛 배차 계획", "📢 기사 알림", "💰 비용 분석", "🌤️ 기상 분석", "⚙️ 설정"]
     )
     
     # 데이터 로드
     weekly_forecast, monthly_forecast = load_forecast_data()
     dispatch_plan, dispatch_monthly = load_dispatch_data()
     notifications = load_notifications()
+    weather_analysis = load_weather_analysis()
+    weather_processed = load_weather_processed()
     
     # 메뉴별 화면
     if menu == "📈 수요 예측":
@@ -120,6 +143,9 @@ def main():
     
     elif menu == "💰 비용 분석":
         show_cost_analysis_page(dispatch_plan, dispatch_monthly)
+    
+    elif menu == "🌤️ 기상 분석":
+        show_weather_analysis_page(weather_analysis, weather_processed)
     
     elif menu == "⚙️ 설정":
         show_settings_page()
@@ -347,6 +373,97 @@ def show_cost_analysis_page(dispatch_plan, dispatch_monthly):
         st.plotly_chart(fig2, use_container_width=True)
 
 
+def show_weather_analysis_page(weather_analysis, weather_processed):
+    """기상 분석 페이지"""
+    st.header("🌤️ 기상 데이터 분석 (20년)")
+    
+    if weather_analysis is None:
+        st.warning("⚠️ 기상 데이터가 없습니다. 먼저 `python src/weather_data_collector.py`를 실행하세요.")
+        
+        if st.button("🌐 기상 데이터 수집 시작"):
+            st.info("기상청 API에서 데이터를 수집합니다... (약 5-10분 소요)")
+            st.code("python src/weather_data_collector.py", language="bash")
+        return
+    
+    # 수집 정보
+    st.subheader("📊 데이터 수집 정보")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("수집 기간", weather_analysis['수집_정보']['수집_기간'])
+    with col2:
+        st.metric("총 연도", f"{weather_analysis['수집_정보']['총_연도_수']}년")
+    with col3:
+        st.metric("총 데이터", f"{weather_analysis['수집_정보']['총_데이터_수']:,}주")
+    
+    # 전체 기간 통계
+    st.subheader("🌡️ 전체 기간 통계")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    stats = weather_analysis['전체_기간_통계']
+    with col1:
+        st.metric("평균 기온", f"{stats['평균_기온']:.1f}°C")
+    with col2:
+        st.metric("최저 기온", f"{stats['최저_기온']:.1f}°C")
+    with col3:
+        st.metric("최고 기온", f"{stats['최고_기온']:.1f}°C")
+    with col4:
+        st.metric("평균 강수량", f"{stats['평균_강수량']:.1f}mm")
+    
+    # 파종기 통계
+    st.subheader("🌱 파종기 (2~5월) 통계")
+    planting_stats = weather_analysis['파종기_2~5월_통계']
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("평균 기온", f"{planting_stats['평균_기온']:.1f}°C")
+    with col2:
+        st.metric("평균 주간 강수량", f"{planting_stats['평균_주간_강수량']:.1f}mm")
+    with col3:
+        st.metric("평균 비오는 날", f"{planting_stats['평균_비오는_날']:.1f}일")
+    
+    # 주차별 평년값 그래프
+    if weather_processed is not None:
+        st.subheader("📈 주차별 평년 기온 (20년 평균)")
+        
+        weekly_avg = weather_processed.groupby('week')['avg_temp'].mean().reset_index()
+        
+        fig = px.line(
+            weekly_avg,
+            x='week',
+            y='avg_temp',
+            title='주차별 평년 기온',
+            labels={'week': '주차', 'avg_temp': '평균 기온 (°C)'}
+        )
+        fig.add_hline(y=planting_stats['평균_기온'], 
+                     line_dash="dash", 
+                     line_color="green",
+                     annotation_text="파종기 평균")
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 연도별 트렌드
+        st.subheader("📊 연도별 기온 트렌드")
+        
+        yearly_avg = weather_processed.groupby('year')['avg_temp'].mean().reset_index()
+        
+        fig2 = px.line(
+            yearly_avg,
+            x='year',
+            y='avg_temp',
+            title='연도별 평균 기온 변화',
+            labels={'year': '연도', 'avg_temp': '평균 기온 (°C)'},
+            markers=True
+        )
+        fig2.update_layout(height=400)
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # 기온 상승 추세
+        if len(yearly_avg) > 1:
+            temp_change = yearly_avg['avg_temp'].iloc[-1] - yearly_avg['avg_temp'].iloc[0]
+            st.info(f"📈 20년간 기온 변화: {temp_change:+.2f}°C")
+
+
 def show_settings_page():
     """설정 페이지"""
     st.header("⚙️ 시스템 설정")
@@ -370,15 +487,22 @@ def show_settings_page():
     st.number_input("사전 알림 일수", value=3, min_value=1, max_value=7)
     
     st.subheader("데이터 새로고침")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
-        if st.button("🔄 예측 모델 재실행"):
-            st.info("예측 모델을 재실행합니다...")
-            # 실제로는 subprocess로 실행
+        if st.button("🌐 기상 데이터 수집"):
+            st.info("기상청 API에서 데이터를 수집합니다...")
+            st.code("python src/weather_data_collector.py", language="bash")
     
     with col2:
+        if st.button("🔄 예측 모델 재실행"):
+            st.info("예측 모델을 재실행합니다...")
+            st.code("python src/predict_future.py", language="bash")
+    
+    with col3:
         if st.button("🔄 배차 계획 재생성"):
             st.info("배차 계획을 재생성합니다...")
+            st.code("python src/dispatch.py", language="bash")
 
 
 if __name__ == "__main__":

@@ -56,25 +56,65 @@ class FutureDemandPredictor:
     
     def calculate_normal_temperature(self):
         """
-        과거 4년치 데이터에서 주차별 평년 기온 계산
+        기상청 API 수집 데이터에서 주차별 평년 기온 계산
         데이터가 없으면 표준 기온 패턴 사용
         """
+        # 1. 기상청 분석 결과 JSON 파일 확인
+        weather_analysis_path = Path('data/weather_analysis.json')
+        if weather_analysis_path.exists():
+            try:
+                import json
+                with open(weather_analysis_path, 'r', encoding='utf-8') as f:
+                    analysis = json.load(f)
+                
+                # 주차별 평년값 가져오기
+                weekly_normal = analysis.get('주차별_평년값', {})
+                if weekly_normal:
+                    self.avg_temperature_by_week = {}
+                    for week_str, values in weekly_normal.items():
+                        week_num = int(week_str)
+                        self.avg_temperature_by_week[week_num] = values.get('avg_temp', 15.0)
+                    
+                    print(f"✓ 기상청 API 데이터에서 평년 기온 계산 완료 (20년 평균)")
+                    print(f"  - 데이터 기간: {analysis['수집_정보']['수집_기간']}")
+                    print(f"  - 전체 평균 기온: {analysis['전체_기간_통계']['평균_기온']:.1f}°C")
+                    return
+            except Exception as e:
+                print(f"기상청 분석 데이터 로드 실패: {e}")
+        
+        # 2. 전처리된 주차별 데이터 확인
+        weather_processed_path = Path('data/weather_processed.csv')
+        if weather_processed_path.exists():
+            try:
+                df = pd.read_csv(weather_processed_path, encoding='utf-8-sig')
+                
+                # 주차별 평균 기온 계산 (20년 평균)
+                weekly_avg = df.groupby('week')['avg_temp'].mean()
+                self.avg_temperature_by_week = weekly_avg.to_dict()
+                
+                print(f"✓ 기상청 전처리 데이터에서 평년 기온 계산 완료")
+                print(f"  - 총 {len(df)}주 데이터 사용")
+                return
+            except Exception as e:
+                print(f"전처리 데이터 로드 실패: {e}")
+        
+        # 3. 사용자 지정 과거 데이터 확인
         if self.historical_data_path and os.path.exists(self.historical_data_path):
             try:
-                # 실제 데이터에서 평년값 계산
                 df = pd.read_csv(self.historical_data_path)
                 df['date'] = pd.to_datetime(df['date'])
                 df['week'] = df['date'].dt.isocalendar().week
                 
                 # 주차별 평균 기온 계산
                 self.avg_temperature_by_week = df.groupby('week')['temperature'].mean().to_dict()
-                print(f"✓ 과거 데이터에서 평년 기온 계산 완료")
+                print(f"✓ 사용자 지정 데이터에서 평년 기온 계산 완료")
                 return
             except Exception as e:
-                print(f"과거 데이터 로드 실패: {e}")
+                print(f"사용자 데이터 로드 실패: {e}")
         
-        # 표준 기온 패턴 사용 (한국 평년 기온 근사)
-        print("✓ 표준 평년 기온 패턴 사용")
+        # 4. 표준 기온 패턴 사용 (한국 평년 기온 근사)
+        print("⚠️  기상 데이터를 찾을 수 없습니다. 표준 평년 기온 패턴 사용")
+        print("   먼저 'python src/weather_data_collector.py'를 실행하세요.")
         self.avg_temperature_by_week = {}
         for week in range(1, 53):
             # 정현파 기반 계절 패턴 (1월 초 = 주차 1)
