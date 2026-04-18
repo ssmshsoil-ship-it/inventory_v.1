@@ -2,12 +2,19 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-# 프로젝트 루트 경로 설정
-ROOT = Path(__file__).parent.parent
+# 프로젝트 루트 경로 설정 (절대 경로)
+ROOT = Path(r"C:\ai_workspace\sh-ai-model")
 
-# 루트 폴더의 .env 파일 명시적으로 로드
-env_path = ROOT / '.env'
-load_dotenv(dotenv_path=env_path)
+# .env 파일 절대 경로로 명시
+env_path = Path(r"C:\ai_workspace\sh-ai-model\.env")
+
+# .env 파일 로드
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    print(f"✓ .env 파일 로드 성공: {env_path}")
+else:
+    print(f"⚠️  .env 파일을 찾을 수 없습니다: {env_path}")
+
 DATA_DIR      = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 MODELS_DIR    = ROOT / "models"
@@ -15,6 +22,12 @@ REPORTS_DIR   = ROOT / "reports"
 
 # API 키
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '048234d69b91cf5b6c18b1381151060d5c5bb1b1dd26b0fcf26d777d7e63fa24')
+
+# API 키 확인 (앞 4자리만 출력)
+if WEATHER_API_KEY:
+    print(f"✓ API 키 로드 완료: {WEATHER_API_KEY[:4]}... (총 {len(WEATHER_API_KEY)}자)")
+else:
+    print("⚠️  API 키를 찾을 수 없습니다.")
 
 # 원본 데이터
 MASTER_DB     = DATA_DIR / "master_db_v.0.xlsx"
