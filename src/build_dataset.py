@@ -9,6 +9,8 @@ from config import DATA_DIR, PROCESSED_DIR, MASTER_DB, WEATHER_DIR, TRAINING_DAT
 
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
+ERP_HISTORICAL = PROCESSED_DIR / "erp_2019_2022.csv"
+
 
 def load_master(path: Path) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name="정제데이터")
@@ -44,6 +46,20 @@ def aggregate_weekly(df: pd.DataFrame) -> pd.DataFrame:
     pivot["원예용_포"] = pivot.get("원예용_포", 0).fillna(0)
     pivot["총출고_포"] = pivot["수도용_포"] + pivot["원예용_포"]
     return pivot
+
+
+def load_erp_historical(path: Path) -> pd.DataFrame:
+    """2019-2022 ERP 전처리 결과 로드 (erp_2019_2022.csv)"""
+    df = pd.read_csv(path)
+    df["ISO연도"] = df["ISO연도"].astype(int)
+    df["ISO주차"] = df["ISO주차"].astype(int)
+    df["수도용_포"] = df["수도용_포"].fillna(0).astype(int)
+    df["원예용_포"] = df["원예용_포"].fillna(0).astype(int)
+    df["총출고_포"] = df["수도용_포"] + df["원예용_포"]
+    # master_db와 컬럼 정합: L 컬럼은 없으므로 0 처리
+    df["수도용_L"] = 0.0
+    df["원예용_L"] = 0.0
+    return df
 
 
 def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
@@ -103,7 +119,19 @@ def add_calendar_features(df: pd.DataFrame) -> pd.DataFrame:
 def build(save=True) -> pd.DataFrame:
     print("1. master_db 로드 및 집계...")
     master = load_master(MASTER_DB)
-    weekly_out = aggregate_weekly(master)
+    weekly_master = aggregate_weekly(master)
+
+    if ERP_HISTORICAL.exists():
+        print("1b. ERP 2019-2022 로드 및 병합...")
+        weekly_hist = load_erp_historical(ERP_HISTORICAL)
+        # master_db 기간과 중복 제거 (master_db 우선)
+        master_years = set(weekly_master["ISO연도"].unique())
+        weekly_hist = weekly_hist[~weekly_hist["ISO연도"].isin(master_years)]
+        weekly_out = pd.concat([weekly_hist, weekly_master], ignore_index=True)
+        weekly_out = weekly_out.sort_values(["ISO연도", "ISO주차"]).reset_index(drop=True)
+        print(f"   병합 후: {len(weekly_hist)}주(2019-22) + {len(weekly_master)}주(master) = {len(weekly_out)}주")
+    else:
+        weekly_out = weekly_master
 
     print("2. 기상 데이터 로드...")
     weather = load_weekly_weather(WEATHER_DIR)
