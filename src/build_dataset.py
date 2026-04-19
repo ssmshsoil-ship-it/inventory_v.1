@@ -78,7 +78,12 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
     """
     print(f"\n- 원본 기상 데이터 병합 및 전처리 시작: {raw_weather_dir}")
     
-    csv_files = sorted(list(raw_weather_dir.glob("*.csv")))
+    all_csv_files = sorted(list(raw_weather_dir.glob("*.csv")))
+    
+    # 이미 처리된 결과 파일명은 제외
+    exclude_files = ['weekly_features.csv', 'final_training_data.csv']
+    csv_files = [f for f in all_csv_files if f.name not in exclude_files]
+
     if not csv_files:
         print(f"  [경고] '{raw_weather_dir}' 폴더에 병합할 CSV 파일이 없습니다.")
         return pd.DataFrame()
@@ -97,7 +102,7 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
             date_col_map = {'일시': 'date', 'tm': 'date'}
             df.rename(columns=date_col_map, inplace=True)
             if 'date' not in df.columns:
-                print(f"  [경고] '{file.name}'에서 날짜 컬럼('일시', 'tm', 'date')을 찾지 못해 건너뜁니다.")
+                print(f"  - 날짜 컬럼을 찾지 못해 '{file.name}' 파일을 스킵합니다.")
                 continue
 
             # 지점번호 컬럼: 'stn_id', '지점', 'stnId' -> 'stn_id'
