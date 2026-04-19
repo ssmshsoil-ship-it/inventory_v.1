@@ -13,6 +13,10 @@ import requests
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+
+# .env 파일에서 환경 변수 로드
+load_dotenv()
 
 # --- 설정 ---
 # API 키 (환경 변수에서 로드)
