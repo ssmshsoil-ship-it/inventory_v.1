@@ -25,6 +25,7 @@ END_YEAR = 2022
 # 저장 경로
 OUTPUT_DIR = Path("data/raw/weather")
 OUTPUT_FILE = OUTPUT_DIR / f"weather_{START_YEAR}_{END_YEAR}.csv"
+FAILED_LOG_FILE = Path("failed_log.txt")
 
 # API 정보
 API_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
@@ -32,8 +33,13 @@ STATIONS = 'ALL'  # 전국 모든 지점
 ITEMS_PER_PAGE = 700 # 한 페이지에 가져올 데이터 수 (최대 999)
 # --- ---
 
+def log_failed_period(start_date: str, end_date: str):
+    """실패한 날짜 범위를 로그 파일에 기록합니다."""
+    with open(FAILED_LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"Failed to fetch data for period: {start_date} to {end_date}\n")
+
 def fetch_weather_data_for_period(start_date: str, end_date: str) -> list:
-    """지정된 기간의 전국 ASOS 기상 데이터를 API로 요청합니다."""
+    """지정된 기간의 전국 ASOS 기상 데이터를 API로 요청하고, 실패 시 재시도합니다."""
     all_data = []
     page_no = 1
     
@@ -50,41 +56,52 @@ def fetch_weather_data_for_period(start_date: str, end_date: str) -> list:
     }
 
     while True:
-        try:
-            params['pageNo'] = page_no
-            response = requests.get(API_URL, params=params, timeout=30)
-            response.raise_for_status() # HTTP 오류 발생 시 예외 발생
-            
-            data = response.json()
-            
-            if data['response']['header']['resultCode'] != '00':
-                error_msg = data['response']['header']['resultMsg']
-                print(f"  [API 오류] {error_msg} (기간: {start_date}~{end_date}, 페이지: {page_no})")
-                break
-
-            items = data['response']['body']['items'].get('item', [])
-            if not items:
-                break
-
-            all_data.extend(items)
-            
-            total_count = data['response']['body']['totalCount']
-            if page_no * ITEMS_PER_PAGE >= total_count:
-                break
+        max_retries = 3
+        response_data = None
+        for attempt in range(max_retries):
+            try:
+                params['pageNo'] = page_no
+                response = requests.get(API_URL, params=params, timeout=30)
+                response.raise_for_status()
                 
-            page_no += 1
-            time.sleep(1) # 과도한 요청 방지를 위한 1초 대기
+                data = response.json()
+                result_code = data['response']['header']['resultCode']
+                result_msg = data['response']['header']['resultMsg']
 
-        except requests.exceptions.RequestException as e:
-            print(f"  [네트워크 오류] {e}")
-            time.sleep(5)
-            continue
-        except (KeyError, TypeError) as e:
-            print(f"  [데이터 형식 오류] 응답 JSON 구조가 예상과 다릅니다: {e}")
+                # DB_ERROR(03) 등 재시도 가능한 오류
+                if result_code in ['03', '21']: # DB_ERROR, DEADLINE_EXCEEDED
+                    raise requests.exceptions.RequestException(f"API Error ({result_code}): {result_msg}")
+
+                if result_code != '00':
+                    print(f"  [복구 불가능한 API 오류] {result_msg} (기간: {start_date}~{end_date})")
+                    log_failed_period(start_date, end_date)
+                    return []
+
+                response_data = data
+                break # 성공 시 재시도 루프 탈출
+
+            except requests.exceptions.RequestException as e:
+                print(f"  [네트워크/DB 오류] {e} (시도 {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(5)
+                else:
+                    print("  -> 최대 재시도 실패. 이 기간의 수집을 중단합니다.")
+                    log_failed_period(start_date, end_date)
+                    return []
+        
+        # --- 성공 응답 처리 ---
+        items = response_data['response']['body']['items'].get('item', [])
+        if not items:
             break
-        except Exception as e:
-            print(f"  [알 수 없는 오류] {e}")
+
+        all_data.extend(items)
+        
+        total_count = response_data['response']['body']['totalCount']
+        if page_no * ITEMS_PER_PAGE >= total_count:
             break
+            
+        page_no += 1
+        time.sleep(1) # 과도한 요청 방지를 위한 1초 대기
             
     return all_data
 
