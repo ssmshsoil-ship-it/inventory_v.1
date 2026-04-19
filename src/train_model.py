@@ -47,8 +47,29 @@ def train_delivery_model():
     if target_col not in df.columns:
         print(f"[오류] 예측 대상 컬럼 '{target_col}'을 데이터에서 찾을 수 없습니다.")
         return
+    
+    print("\n- 2. 데이터 전처리 (결측치 처리 및 타입 변환)")
+    # 타겟 변수 NaN이 있는 행은 학습에 사용할 수 없으므로 제거
+    original_rows = len(df)
+    df.dropna(subset=[target_col], inplace=True)
+    if len(df) < original_rows:
+        print(f"  [OK] 타겟 변수('{target_col}')에 결측치가 있는 {original_rows - len(df)}개 행 제거.")
 
-    print("- 2. 데이터 분할 및 피처 준비 (학습: ~{VAL_YEAR-1}년, 검증: {VAL_YEAR}년)")
+    # 학습 피처 정의
+    features = [col for col in df.columns if col not in [target_col, 'date']]
+    categorical_features = df[features].select_dtypes(include=['object', 'category']).columns.tolist()
+    numerical_features = df[features].select_dtypes(include=np.number).columns.tolist()
+
+    # 범주형 피처: 결측치를 'missing'으로 채우고 str 타입으로 강제 변환
+    for col in categorical_features:
+        df[col] = df[col].fillna('missing').astype(str)
+    print(f"  [OK] 범주형 피처({len(categorical_features)}개) 전처리 완료.")
+
+    # 수치형 피처: 결측치를 0으로 채우기 (기온, 강수량 등)
+    df[numerical_features] = df[numerical_features].fillna(0)
+    print(f"  [OK] 수치형 피처({len(numerical_features)}개) 결측치를 0으로 처리 완료.")
+
+    print("\n- 3. 데이터 분할 및 피처 준비 (학습: ~{VAL_YEAR-1}년, 검증: {VAL_YEAR}년)")
     df['year'] = df['date'].dt.year
     df['month'] = df['date'].dt.month
     df['week'] = df['date'].dt.isocalendar().week
@@ -56,13 +77,8 @@ def train_delivery_model():
     
     train_df = df[df['year'].isin(TRAIN_YEARS)]
     val_df = df[df['year'] == VAL_YEAR]
-
-    # 학습 피처 정의: 원본 날짜와 타겟을 제외한 모든 컬럼 사용
-    features = [col for col in df.columns if col not in [target_col, 'date']]
-
-    # 범주형 피처 자동 인식 (문자열 또는 카테고리 타입)
-    X_train_temp = train_df[features]
-    categorical_features = X_train_temp.select_dtypes(include=['object', 'category']).columns.tolist()
+    
+    # 이미 전처리 단계에서 정의된 피처 리스트 사용
     print(f"  [OK] 자동 인식된 범주형 피처: {categorical_features}")
 
     X_train = train_df[features]
@@ -71,7 +87,7 @@ def train_delivery_model():
     y_val = val_df[target_col]
     print(f"  [OK] 학습 데이터: {len(X_train)}건, 검증 데이터: {len(X_val)}건")
 
-    print("- 3. CatBoost 모델 학습 시작")
+    print("\n- 4. CatBoost 모델 학습 시작")
     model = CatBoostRegressor(
         iterations=1000,
         learning_rate=0.05,
@@ -90,20 +106,20 @@ def train_delivery_model():
         use_best_model=True
     )
 
-    print("- 4. 모델 성능 평가")
+    print("\n- 5. 모델 성능 평가")
     preds = model.predict(X_val)
     mae = mean_absolute_error(y_val, preds)
     rmse = np.sqrt(mean_squared_error(y_val, preds))
     print(f"  [결과] 검증 데이터 평균 절대 오차(MAE): {mae:.2f}")
     print(f"  [참고] 검증 데이터 RMSE: {rmse:.2f}")
 
-    print("\n- 5. 피처 중요도 분석")
+    print("\n- 6. 피처 중요도 분석")
     feature_importances = pd.Series(model.get_feature_importance(), index=features)
     top_20_features = feature_importances.sort_values(ascending=False).head(20)
     print("  [상위 20개 피처 중요도]")
     print(top_20_features.to_string())
 
-    print("\n- 6. 예측 결과 차트 생성")
+    print("\n- 7. 예측 결과 차트 생성")
     val_results = val_df[['date']].copy()
     val_results['actual'] = y_val
     val_results['predicted'] = preds
@@ -122,7 +138,7 @@ def train_delivery_model():
     plt.savefig(PREDICTION_CHART_PATH)
     print(f"  [OK] 차트 저장 완료: {PREDICTION_CHART_PATH}")
 
-    print("\n- 7. 모델 저장")
+    print("\n- 8. 모델 저장")
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     model.save_model(MODEL_PATH)
     print(f"  [OK] 모델 저장 완료: {MODEL_PATH}")
