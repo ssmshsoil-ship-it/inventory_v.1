@@ -118,15 +118,49 @@ def main():
         print("예: set KMA_API_KEY=your_api_key_here")
         return
 
-    print(f"기상 데이터 수집을 시작합니다 ({START_YEAR}년 ~ {END_YEAR}년)")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    full_data = []
+    # --- 이어받기 로직: 기존 데이터 및 실패 로그 확인 ---
+    dates_collected = set()
+    if OUTPUT_FILE.exists():
+        try:
+            df_existing = pd.read_csv(OUTPUT_FILE)
+            if 'date' in df_existing.columns and not df_existing.empty:
+                dates_collected = set(pd.to_datetime(df_existing['date']).dt.strftime('%Y-%m'))
+                print(f"[정보] 기존 파일에서 {len(dates_collected)}개월치 데이터를 확인했습니다. 이어받기를 시작합니다.")
+        except Exception as e:
+            print(f"[경고] 기존 데이터 파일({OUTPUT_FILE})을 읽는 중 오류 발생: {e}. 새로 시작합니다.")
     
+    dates_to_retry = set()
+    if FAILED_LOG_FILE.exists():
+        with open(FAILED_LOG_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = line.strip().split(' ')
+                if len(parts) >= 6:
+                    start_dt_str = parts[-3]
+                    try:
+                        # YYYYMMDD to YYYY-MM
+                        dates_to_retry.add(datetime.strptime(start_dt_str, '%Y%m%d').strftime('%Y-%m'))
+                    except ValueError:
+                        continue
+        if dates_to_retry:
+            print(f"[정보] 실패 로그에서 {len(dates_to_retry)}개월치 재시도 요청을 확인했습니다: {sorted(list(dates_to_retry))}")
+            # 재시도 후 로그 파일 초기화
+            open(FAILED_LOG_FILE, 'w').close()
+            print("  [OK] 실패 로그 파일을 초기화했습니다.")
+
+    # --- 월별 데이터 수집 및 실시간 저장 ---
+    print(f"\n기상 데이터 수집을 시작합니다 ({START_YEAR}년 ~ {END_YEAR}년)")
+    new_data_collected = False
     for year in range(START_YEAR, END_YEAR + 1):
         for month in range(1, 13):
-            start_of_month = datetime(year, month, 1)
+            month_str = f"{year}-{month:02d}"
             
+            # 이미 수집되었고 재시도 목록에 없으면 건너뛰기
+            if month_str in dates_collected and month_str not in dates_to_retry:
+                continue
+
+            start_of_month = datetime(year, month, 1)
             if month == 12:
                 end_of_month = datetime(year, 12, 31)
             else:
@@ -138,44 +172,53 @@ def main():
             print(f"- {year}년 {month}월 데이터 수집 중... ({start_str} ~ {end_str})")
             monthly_data = fetch_weather_data_for_period(start_str, end_str)
             
-            if monthly_data:
-                full_data.extend(monthly_data)
-                print(f"  [OK] {len(monthly_data)}건 수집 완료.")
-            else:
+            if not monthly_data:
                 print(f"  [정보] 해당 기간에 수집된 데이터가 없습니다.")
-    
-    if not full_data:
-        print("\n[완료] 수집된 데이터가 없어 파일을 생성하지 않습니다.")
+                continue
+
+            # --- 데이터 처리 및 파일에 추가 ---
+            new_data_collected = True
+            df_month = pd.DataFrame(monthly_data)
+            
+            required_cols = ['stnId', 'tm', 'avgTa', 'minTa', 'maxTa', 'sumRn']
+            df_month = df_month[[col for col in required_cols if col in df_month.columns]]
+            df_month = df_month.rename(columns={'stnId': 'stn_id', 'tm': 'date'})
+            
+            df_month['date'] = pd.to_datetime(df_month['date']).dt.strftime('%Y-%m-%d')
+            numeric_cols = ['stn_id', 'avgTa', 'minTa', 'maxTa', 'sumRn']
+            for col in numeric_cols:
+                if col in df_month.columns:
+                    df_month[col] = pd.to_numeric(df_month[col], errors='coerce')
+
+            if 'sumRn' in df_month.columns:
+                df_month['sumRn'] = df_month['sumRn'].fillna(0)
+
+            # 파일이 없으면 헤더를 쓰고, 있으면 헤더 없이 데이터만 추가
+            header = not OUTPUT_FILE.exists()
+            df_month.to_csv(OUTPUT_FILE, mode='a', header=header, index=False, encoding='utf-8-sig')
+            print(f"  [OK] {len(df_month)}건의 데이터를 파일에 저장했습니다: {OUTPUT_FILE}")
+
+    # --- 최종 정리 (중복 제거 및 정렬) ---
+    if not new_data_collected and not dates_to_retry:
+        print("\n[완료] 새로 수집된 데이터가 없습니다.")
         return
 
-    print("\n데이터프레임 변환 및 전처리를 시작합니다...")
-    df = pd.DataFrame(full_data)
-
-    # API 원본 컬럼명 중 필요한 것만 선택 후, 기존 데이터와 컬럼명 통일
-    required_cols_original = ['stnId', 'tm', 'avgTa', 'minTa', 'maxTa', 'sumRn']
-    cols_to_select = [col for col in required_cols_original if col in df.columns]
-    df = df[cols_to_select]
-    df = df.rename(columns={'stnId': 'stn_id', 'tm': 'date'})
-    
-    print(f"  [OK] 컬럼 선택 및 이름 변경 완료.")
-    
-    # 데이터 타입 변환 및 날짜 형식 맞추기
-    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
-    numeric_cols = ['stn_id', 'avgTa', 'minTa', 'maxTa', 'sumRn']
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    print(f"  [OK] 데이터 타입 변환 완료.")
-
-    if 'sumRn' in df.columns:
-        df['sumRn'] = df['sumRn'].fillna(0)
-        print(f"  [OK] 강수량(sumRn) 결측치를 0으로 처리.")
-
-    df = df.sort_values(by=['stn_id', 'date']).reset_index(drop=True)
-    df.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
-    print(f"\n[성공] 모든 데이터 수집이 완료되었습니다.")
-    print(f" -> 최종 데이터: {len(df)}행, {len(df.columns)}컬럼")
-    print(f" -> 저장 경로: {OUTPUT_FILE}")
+    print("\n수집 완료. 데이터 정리 및 중복 제거를 시작합니다...")
+    try:
+        final_df = pd.read_csv(OUTPUT_FILE)
+        original_rows = len(final_df)
+        
+        final_df.drop_duplicates(subset=['stn_id', 'date'], keep='last', inplace=True)
+        final_df = final_df.sort_values(by=['stn_id', 'date']).reset_index(drop=True)
+        
+        final_df.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
+        
+        print(f"\n[성공] 모든 데이터 정리가 완료되었습니다.")
+        print(f" -> 중복 제거: {original_rows - len(final_df)}건")
+        print(f" -> 최종 데이터: {len(final_df)}행, {len(final_df.columns)}컬럼")
+        print(f" -> 저장 경로: {OUTPUT_FILE}")
+    except Exception as e:
+        print(f"[오류] 최종 데이터 정리 중 오류 발생: {e}")
 
 if __name__ == "__main__":
     main()
