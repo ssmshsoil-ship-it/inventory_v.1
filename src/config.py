@@ -58,6 +58,7 @@ MASTER_DB     = DATA_DIR / "master_db_v.0.xlsx"
 WEATHER_DIR   = DATA_DIR / "weather"
 RAW_WEATHER_DIR = DATA_DIR / "raw" / "weather"  # 원본 기상 데이터 폴더
 COST_FILE     = DATA_DIR / "cost.xls"
+SALES_DATA_DIR = DATA_DIR / "2019-2026" # 2019-2026년 상세 판매 데이터
 
 # 처리된 데이터
 TRAINING_DATA = PROCESSED_DIR / "training_dataset_v1.csv"
