@@ -102,14 +102,16 @@ def integrate_and_engineer_features():
         # merge를 위해 날짜 형식 통일
         weather_df['date'] = pd.to_datetime(weather_df['date']).dt.normalize()
         
+        print(f"  [진단] 원본 기상 데이터 컬럼: {weather_df.columns.tolist()}")
         # 표준 영문 컬럼명으로 유연하게 변경하고 필요한 컬럼만 선택
         rename_map = {}
         for col in weather_df.columns:
-            # 컬럼명을 소문자로 바꿔서 비교
             lower_col = col.lower()
-            if '평균기온' in col or '기온' in col or 'temp' in lower_col:
+            # 기온 관련 컬럼명 표준화 (avg_temp)
+            if col in ['평균기온(°C)', '평균기온', '평균 기온'] or '기온' in col or 'temp' in lower_col:
                 rename_map[col] = 'avg_temp'
-            if '강수량' in col or 'rain' in lower_col:
+            # 강수량 관련 컬럼명 표준화 (precip)
+            elif '강수량' in col or 'rain' in lower_col:
                 rename_map[col] = 'precip'
 
         weather_df.rename(columns=rename_map, inplace=True)
@@ -131,6 +133,7 @@ def integrate_and_engineer_features():
             print("  - weather_df 키 (상위 5개):")
             print(weather_df[['date', 'stn_id']].head().to_string())
             print(f"  - weather_df key dtypes: date({weather_df['date'].dtype}), stn_id({weather_df['stn_id'].dtype})")
+            print(f"  [진단] Merge 직전 weather_df에 'avg_temp' 존재 여부: {'avg_temp' in weather_df.columns}")
         else:
             print(f"  - [경고] weather_df에 조인 키가 부족합니다. 현재 컬럼: {weather_df.columns.tolist()}")
 
