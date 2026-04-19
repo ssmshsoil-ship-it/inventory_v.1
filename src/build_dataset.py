@@ -151,10 +151,10 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
 
 def analyze_region_data(sales_dir: Path):
     """
-    지정된 폴더의 모든 판매 데이터(Excel)를 로드하여 지역 관련 컬럼의
-    고유값과 빈도수를 분석하고 출력합니다.
+    지정된 폴더의 모든 판매 데이터를 로드하여 '고객' 또는 '지역' 관련 컬럼의
+    고유값과 빈도수를 분석하고, 형식에 맞지 않는 데이터 수를 확인합니다.
     """
-    print(f"\n- 지역 컬럼 데이터 분석 시작: {sales_dir}")
+    print(f"\n- 고객/지역 컬럼 데이터 분석 시작: {sales_dir}")
     
     # .xlsx와 .xls 파일을 모두 찾음
     excel_files = sorted(list(sales_dir.glob("*.xlsx"))) + sorted(list(sales_dir.glob("*.xls")))
@@ -166,7 +166,7 @@ def analyze_region_data(sales_dir: Path):
     for file in excel_files:
         try:
             # 첫 번째 시트만 읽음
-            df = pd.read_excel(file) 
+            df = pd.read_excel(file)
             df_list.append(df)
             print(f"  [OK] 로드: {file.name} ({len(df)} 행)")
         except Exception as e:
@@ -179,30 +179,50 @@ def analyze_region_data(sales_dir: Path):
     merged_df = pd.concat(df_list, ignore_index=True)
     print(f"\n  [OK] 총 {len(excel_files)}개 파일, {len(merged_df)} 행 데이터 병합 완료.")
 
-    # 지역 관련 컬럼 찾기
-    region_col = None
-    possible_cols = ['지역', '지역(임)', '시군명'] 
+    # 고객 또는 지역 관련 컬럼 찾기 (우선순위 순)
+    target_col = None
+    possible_cols = ['지역(임)', '지역', '시군명', '고객', '고객명', '거래처명']
     for col in possible_cols:
         if col in merged_df.columns:
-            region_col = col
+            target_col = col
             break
     
-    if not region_col:
-        print(f"  [오류] 데이터에서 지역 관련 컬럼({', '.join(possible_cols)})을 찾을 수 없습니다.")
+    if not target_col:
+        print(f"  [오류] 데이터에서 분석할 컬럼({', '.join(possible_cols)})을 찾을 수 없습니다.")
         print(f"  -> 사용 가능한 컬럼: {list(merged_df.columns)}")
         return
         
-    print(f"  [OK] 분석 대상 컬럼: '{region_col}'")
+    print(f"  [OK] 분석 대상 컬럼: '{target_col}'")
     
     # NaN 값 및 공백 처리
-    cleaned_series = merged_df[region_col].fillna('N/A').astype(str).str.strip()
+    cleaned_series = merged_df[target_col].fillna('N/A').astype(str).str.strip()
 
-    print(f"\n--- '{region_col}' 컬럼 고유값 및 빈도수 ---")
     value_counts = cleaned_series.value_counts()
+    top_50 = value_counts.head(50)
+
+    print(f"\n--- '{target_col}' 컬럼 상위 50개 고유값 및 빈도수 ---")
+    print(top_50)
+
+    # 상위 50개 중 형식 ('지역명(임)')을 벗어난 데이터 분석
+    anomaly_count = 0
+    anomalies = []
+    for value, count in top_50.items():
+        # 'N/A'는 분석에서 제외
+        if value == 'N/A':
+            continue
+        # 문자열이 아니거나, '(임)'으로 끝나지 않으면 이상치로 간주
+        if not isinstance(value, str) or not value.endswith('(임)'):
+            anomaly_count += 1
+            anomalies.append(value)
+
+    print("\n--- 상위 50개 데이터 형식 분석 결과 ---")
+    print(f"분석 기준: '지역명(임)' 형식으로 끝나는가?")
+    print(f"형식을 벗어난 데이터 수: {anomaly_count} / {len(top_50)}")
     
-    # 모든 결과를 출력하도록 pandas 옵션 설정
-    with pd.option_context('display.max_rows', None):
-        print(value_counts)
+    if anomaly_count > 0:
+        print("\n[참고] 형식을 벗어난 데이터 예시 (최대 10개):")
+        for anom in anomalies[:10]:
+            print(f"- {anom}")
     
     print(f"\n분석 완료: 총 {len(value_counts)}개의 고유값이 발견되었습니다.")
 
