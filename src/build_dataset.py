@@ -64,15 +64,18 @@ def load_erp_historical(path: Path) -> pd.DataFrame:
 
 def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
     """
-    지정된 폴더의 모든 기상 데이터 CSV 파일을 하나의 DataFrame으로 병합합니다.
+    지정된 폴더의 모든 기상 데이터 CSV를 병합하고 전처리합니다.
+    - 날짜 형식 'YYYY-MM-DD' 통일 및 중복 데이터 제거
+    - '연도', '월', '주차' 컬럼 생성
+    - 2019년부터 데이터가 끝나는 시점까지 모든 날짜에 대한 행 생성 (결측치는 NaN)
     
     Args:
         raw_weather_dir (Path): 원본 CSV 파일들이 있는 폴더 경로
     
     Returns:
-        pd.DataFrame: 병합된 데이터프레임
+        pd.DataFrame: 전처리된 데이터프레임
     """
-    print(f"\n- 원본 기상 데이터 병합 시작: {raw_weather_dir}")
+    print(f"\n- 원본 기상 데이터 병합 및 전처리 시작: {raw_weather_dir}")
     
     csv_files = sorted(list(raw_weather_dir.glob("*.csv")))
     if not csv_files:
@@ -82,7 +85,6 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
     df_list = []
     for file in csv_files:
         try:
-            # API로 수집한 데이터는 보통 utf-8이지만, 문제가 발생하면 'cp949' 시도
             df = pd.read_csv(file)
             df_list.append(df)
             print(f"  ✓ 로드: {file.name} ({len(df)} 행)")
@@ -94,9 +96,56 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
         return pd.DataFrame()
     
     merged_df = pd.concat(df_list, ignore_index=True)
-    print(f"  ✓ 병합 완료: 총 {len(merged_df)} 행")
+    print(f"  - 병합 완료: 총 {len(merged_df)} 행")
+
+    # 날짜 컬럼('일시')을 datetime으로 변환 (시간 정보는 제거)
+    if '일시' not in merged_df.columns:
+        raise ValueError("병합된 데이터에 '일시' 컬럼이 없습니다. 날짜 컬럼명을 확인해주세요.")
+    merged_df['date'] = pd.to_datetime(merged_df['일시']).dt.normalize()
+
+    # 중복 데이터 제거 (날짜와 지점 기준)
+    if '지점' not in merged_df.columns:
+        raise ValueError("병합된 데이터에 '지점' 컬럼이 없습니다. 관측소 ID 컬럼명을 확인해주세요.")
+        
+    print(f"  - 중복 제거 전: {len(merged_df)} 행")
+    merged_df = merged_df.sort_values(by=['date', '지점']).drop_duplicates(subset=['date', '지점'], keep='first')
+    print(f"  - 중복 제거 후: {len(merged_df)} 행")
+
+    # 2019년부터 데이터 끝까지 모든 날짜에 대한 플레이스홀더 생성
+    if merged_df.empty:
+        print("  ! 경고: 유효 데이터가 없어 시계열을 생성할 수 없습니다.")
+        return pd.DataFrame()
+        
+    min_date = pd.to_datetime('2019-01-01')
+    max_date = merged_df['date'].max()
+    all_stations = sorted(merged_df['지점'].unique())
     
-    return merged_df
+    print(f"  - 데이터 기간: {merged_df['date'].min().date()} ~ {max_date.date()}")
+    print(f"  - 전체 시계열 생성: {min_date.date()} ~ {max_date.date()} (총 {len(all_stations)}개 관측 지점)")
+
+    # 데카르트 곱으로 모든 날짜-지점 조합 생성
+    full_date_range = pd.date_range(start=min_date, end=max_date, freq='D')
+    placeholder_df = pd.DataFrame(
+        pd.MultiIndex.from_product(
+            [full_date_range, all_stations], 
+            names=['date', '지점']
+        ).to_frame(index=False)
+    )
+    
+    # 원본 데이터와 left-join하여 빈 기간을 NaN으로 채움
+    final_df = pd.merge(placeholder_df, merged_df, on=['date', '지점'], how='left')
+    
+    # 날짜 기반 피처 생성
+    final_df['연도'] = final_df['date'].dt.year
+    final_df['월'] = final_df['date'].dt.month
+    final_df['주차'] = final_df['date'].dt.isocalendar().week.astype(int)
+
+    # 요청에 따라 날짜 컬럼을 'YYYY-MM-DD' 형식의 문자열로 변경
+    final_df['date'] = final_df['date'].dt.strftime('%Y-%m-%d')
+    
+    print(f"  ✓ 전처리 완료: 최종 {len(final_df)} 행")
+    
+    return final_df
 
 
 def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
