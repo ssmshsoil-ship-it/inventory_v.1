@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 ROOT = Path(r"C:\ai_workspace\sh-ai-model")
 
 # .env 파일 절대 경로로 명시
-env_path = Path(r"C:\ai_workspace\sh-ai-model\.env")
+env_path = r"C:\ai_workspace\sh-ai-model\.env"
 
 # .env 파일 로드
-if env_path.exists():
+if os.path.exists(env_path):
     load_dotenv(dotenv_path=env_path)
     print(f"✓ .env 파일 로드 성공: {env_path}")
 else:
@@ -23,9 +23,9 @@ REPORTS_DIR   = ROOT / "reports"
 # API 키
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '048234d69b91cf5b6c18b1381151060d5c5bb1b1dd26b0fcf26d777d7e63fa24')
 
-# API 키 확인 (앞 4자리만 출력)
+# API 키 확인
 if WEATHER_API_KEY:
-    print(f"✓ API 키 로드 완료: {WEATHER_API_KEY[:4]}... (총 {len(WEATHER_API_KEY)}자)")
+    print(f"✓ API Key Loaded: {WEATHER_API_KEY[:4]}... (총 {len(WEATHER_API_KEY)}자)")
 else:
     print("⚠️  API 키를 찾을 수 없습니다.")
 
