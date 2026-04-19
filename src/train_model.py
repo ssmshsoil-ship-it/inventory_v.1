@@ -56,7 +56,11 @@ def train_delivery_model():
         print(f"  [OK] 타겟 변수('{target_col}')에 결측치가 있는 {original_rows - len(df)}개 행 제거.")
 
     # 학습 피처 정의
-    features = [col for col in df.columns if col not in [target_col, 'date']]
+    features_to_exclude = [
+        target_col, 'date', '공급가', '단가', '합계액', '공급가액', '부가세'
+    ]
+    features = [col for col in df.columns if col not in features_to_exclude]
+    print("  [OK] 금액 관련 피처를 학습에서 제외합니다.")
     categorical_features = df[features].select_dtypes(include=['object', 'category']).columns.tolist()
     numerical_features = df[features].select_dtypes(include=np.number).columns.tolist()
 
@@ -89,7 +93,7 @@ def train_delivery_model():
 
     print("\n- 4. CatBoost 모델 학습 시작")
     model = CatBoostRegressor(
-        iterations=1000,
+        iterations=2000,
         learning_rate=0.05,
         depth=10,
         loss_function='RMSE',
@@ -102,7 +106,7 @@ def train_delivery_model():
     model.fit(
         X_train, y_train,
         eval_set=(X_val, y_val),
-        early_stopping_rounds=50,
+        early_stopping_rounds=100,
         use_best_model=True
     )
 
@@ -135,13 +139,13 @@ def train_delivery_model():
     plt.grid(True)
     
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    plt.savefig(PREDICTION_CHART_PATH)
-    print(f"  [OK] 차트 저장 완료: {PREDICTION_CHART_PATH}")
+    plt.savefig("reports/prediction_v2.png")
+    print(f"  [OK] 차트 저장 완료: reports/prediction_v2.png")
 
     print("\n- 8. 모델 저장")
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    model.save_model(MODEL_PATH)
-    print(f"  [OK] 모델 저장 완료: {MODEL_PATH}")
+    model.save_model("models/sh_delivery_v2.cbm")
+    print(f"  [OK] 모델 저장 완료: models/sh_delivery_v2.cbm")
 
 
 if __name__ == "__main__":
