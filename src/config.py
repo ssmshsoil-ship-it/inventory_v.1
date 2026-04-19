@@ -58,6 +58,7 @@ else:
 MASTER_DB     = DATA_DIR / "master_db_v.0.xlsx"
 WEATHER_DIR   = DATA_DIR / "weather"
 RAW_WEATHER_DIR = DATA_DIR / "raw" / "weather"  # 원본 기상 데이터 폴더
+RAW_SALES_DIR = DATA_DIR / "raw" / "sales"    # 원본 판매 데이터 폴더
 COST_FILE     = DATA_DIR / "cost.xls"
 SALES_DATA_DIR = DATA_DIR / "2019-2026" # 2019-2026년 상세 판매 데이터
 
@@ -66,6 +67,7 @@ TRAINING_DATA = PROCESSED_DIR / "training_dataset_v1.csv"
 WEEKLY_WEATHER = PROCESSED_DIR / "weekly_weather.csv"
 UNIQUE_CUSTOMERS_CSV = PROCESSED_DIR / "unique_customers.csv"
 CUSTOMER_MAP_CSV = PROCESSED_DIR / "customer_master_map.csv"
+FINAL_TRAINING_DATA = PROCESSED_DIR / "final_training_data.csv"
 
 # 모델 타겟
 TARGETS = ["수도용_포", "원예용_포"]
