@@ -72,6 +72,10 @@ FINAL_TRAINING_DATA = PROCESSED_DIR / "final_training_data.csv"
 # 모델 타겟
 TARGETS = ["수도용_포", "원예용_포"]
 
+# 모델 및 리포트 경로
+MODEL_PATH = MODELS_DIR / "sh_delivery_v1.cbm"
+PREDICTION_CHART_PATH = REPORTS_DIR / "prediction_chart.png"
+
 # 피크 시즌 (모내기)
 PEAK_WEEKS = (13, 18)
 SPRING_WEEKS = (10, 22)
