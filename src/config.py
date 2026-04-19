@@ -9,12 +9,43 @@ ROOT = Path(r"C:\ai_workspace\sh-ai-model")
 ENV_FILE_PATH = r"C:\ai_workspace\sh-ai-model\.env"
 
 # .env 파일 존재 여부 확인 및 로드
+print(f"\n{'='*70}")
+print("🔍 환경 변수 로드 디버깅")
+print(f"{'='*70}")
+print(f"1. .env 파일 경로: {ENV_FILE_PATH}")
+print(f"2. .env 파일 존재 여부: {os.path.exists(ENV_FILE_PATH)}")
+
 if os.path.exists(ENV_FILE_PATH):
+    # .env 파일 내용 확인 (키 값은 숨김)
+    print(f"3. .env 파일 내용 확인 중...")
+    try:
+        with open(ENV_FILE_PATH, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines:
+                if line.strip() and not line.strip().startswith('#'):
+                    if '=' in line:
+                        key = line.split('=')[0].strip()
+                        print(f"   - 발견된 키: {key}")
+    except Exception as e:
+        print(f"   ⚠️  파일 읽기 오류: {e}")
+    
+    # .env 파일 로드
     load_dotenv(dotenv_path=ENV_FILE_PATH, override=True)
-    print(f"✓ .env 파일 로드 성공: {ENV_FILE_PATH}")
+    print(f"4. ✓ load_dotenv() 실행 완료")
+    
+    # 로드 직후 환경 변수 확인
+    loaded_key = os.getenv('WEATHER_API_KEY')
+    print(f"5. os.getenv('WEATHER_API_KEY') 결과:")
+    if loaded_key:
+        print(f"   ✓ 키 로드 성공: {loaded_key[:4]}****... (총 {len(loaded_key)}자)")
+    else:
+        print(f"   ✗ 키가 None입니다!")
+        print(f"   💡 .env 파일에 'WEATHER_API_KEY=your_key' 형식으로 작성되었는지 확인하세요")
 else:
-    print(f"⚠️  .env 파일을 찾을 수 없습니다: {ENV_FILE_PATH}")
-    print(f"⚠️  다음 위치에 .env 파일을 생성하세요: {ENV_FILE_PATH}")
+    print(f"3. ⚠️  .env 파일을 찾을 수 없습니다")
+    print(f"   다음 위치에 .env 파일을 생성하세요: {ENV_FILE_PATH}")
+
+print(f"{'='*70}\n")
 
 DATA_DIR      = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
@@ -25,13 +56,30 @@ REPORTS_DIR   = ROOT / "reports"
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 
 # API 키 확인 및 검증
+print(f"\n{'='*70}")
+print("🔑 API 키 검증")
+print(f"{'='*70}")
+print(f"찾고 있는 환경 변수명: 'WEATHER_API_KEY'")
+print(f"로드된 값: {WEATHER_API_KEY if WEATHER_API_KEY else 'None'}")
+
 if WEATHER_API_KEY and len(WEATHER_API_KEY) > 10:
     print(f"✓ API Key Loaded: {WEATHER_API_KEY[:4]}****... (총 {len(WEATHER_API_KEY)}자)")
     print(f"✅ 기상 데이터 수집 준비 완료!")
+    print(f"{'='*70}\n")
 else:
-    print("⚠️  API 키를 찾을 수 없거나 유효하지 않습니다.")
-    print(f"⚠️  {ENV_FILE_PATH} 파일에 WEATHER_API_KEY를 설정하세요.")
-    WEATHER_API_KEY = None
+    print(f"❌ API 키를 찾을 수 없거나 유효하지 않습니다!")
+    print(f"\n해결 방법:")
+    print(f"1. {ENV_FILE_PATH} 파일을 열어주세요")
+    print(f"2. 다음 형식으로 작성되었는지 확인하세요:")
+    print(f"   WEATHER_API_KEY=your_actual_api_key_here")
+    print(f"3. 앞뒤 공백이 없는지 확인하세요")
+    print(f"4. 줄바꿈이 올바른지 확인하세요 (Windows: CRLF)")
+    print(f"{'='*70}\n")
+    
+    # API 키가 없으면 프로그램 종료
+    import sys
+    print("❌ API 키 없이는 실행할 수 없습니다. 프로그램을 종료합니다.")
+    sys.exit(1)
 
 # 원본 데이터
 MASTER_DB     = DATA_DIR / "master_db_v.0.xlsx"

@@ -589,6 +589,13 @@ def main():
     # API 키 설정 (config.py에서 로드)
     from config import WEATHER_API_KEY
     
+    # API 키 검증
+    if not WEATHER_API_KEY:
+        print("\n❌ 오류: WEATHER_API_KEY가 None입니다!")
+        print("config.py에서 API 키를 로드하지 못했습니다.")
+        print("위의 디버깅 메시지를 확인하세요.")
+        return
+    
     print(f"\n🔑 API 키 확인: {WEATHER_API_KEY[:20]}... (총 {len(WEATHER_API_KEY)}자)")
     
     # 수집기 생성
