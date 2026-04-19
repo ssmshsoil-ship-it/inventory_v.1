@@ -96,10 +96,16 @@ def train_delivery_model():
     preds = model.predict(X_val)
     mae = mean_absolute_error(y_val, preds)
     rmse = np.sqrt(mean_squared_error(y_val, preds))
-    print(f"  [결과] 검증 데이터 MAE: {mae:.2f}")
-    print(f"  [결과] 검증 데이터 RMSE: {rmse:.2f}")
+    print(f"  [결과] 검증 데이터 평균 절대 오차(MAE): {mae:.2f}")
+    print(f"  [참고] 검증 데이터 RMSE: {rmse:.2f}")
 
-    print("- 5. 예측 결과 차트 생성")
+    print("\n- 5. 피처 중요도 분석")
+    feature_importances = pd.Series(model.get_feature_importance(), index=features)
+    top_20_features = feature_importances.sort_values(ascending=False).head(20)
+    print("  [상위 20개 피처 중요도]")
+    print(top_20_features.to_string())
+
+    print("\n- 6. 예측 결과 차트 생성")
     val_results = val_df[['date']].copy()
     val_results['actual'] = y_val
     val_results['predicted'] = preds
@@ -118,7 +124,7 @@ def train_delivery_model():
     plt.savefig(PREDICTION_CHART_PATH)
     print(f"  [OK] 차트 저장 완료: {PREDICTION_CHART_PATH}")
 
-    print("- 6. 모델 저장")
+    print("\n- 7. 모델 저장")
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     model.save_model(MODEL_PATH)
     print(f"  [OK] 모델 저장 완료: {MODEL_PATH}")
