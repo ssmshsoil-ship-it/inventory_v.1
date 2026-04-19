@@ -122,81 +122,64 @@ class InventoryOptimizerV4:
     def _prepare_future_features(self) -> pd.DataFrame:
         """2027년 수요 예측을 위한 특징(feature) 데이터프레임을 생성합니다."""
         print("\n- 2027년 예측용 데이터 생성 시작...")
-        # 중요: 2027년 기상 데이터는 예측치를 사용해야 합니다.
-        # 여기서는 가장 최근 년도(2026년)의 데이터를 2027년의 근사치로 사용합니다.
         
         # 1. 2027년 날짜 범위 생성
         dates_2027 = pd.date_range(start=f'{SIMULATION_YEAR}-01-01', end=f'{SIMULATION_YEAR}-12-31', freq='D')
         
-        # 2. 예측 단위(품목/지역/관측소) 조합 추출 (수량 뻥튀기 방지)
-        # '고객명'을 제외하여 중복 합산을 방지하고, 모델 입력을 위해 'dummy' 고객을 사용합니다.
+        # 2. 예측 단위(품목/지역) 조합 추출 (수량 뻥튀기 방지)
         print("  [OK] 수량 중복 합산을 방지를 위해 예측 단위를 품목/지역으로 요약합니다.")
-        base_cols = [self.item_col, self.province_col, 'stn_id']
+        base_cols = [self.item_col, self.province_col]
         combinations = self.historical_data[base_cols].drop_duplicates().dropna()
         
         # 3. 날짜와 조합을 기준으로 2027년 데이터프레임 생성
         future_df = pd.DataFrame(dates_2027, columns=['date'])
-        future_df['_key'] = 1
-        combinations['_key'] = 1
+        future_df['_key'] = 1; combinations['_key'] = 1
         future_df = pd.merge(future_df, combinations, on='_key').drop('_key', axis=1)
-        
-        # 모델이 '고객명' 피처를 사용하므로, 대표값으로 설정
         future_df['고객명'] = 'dummy_customer'
 
-        # 4. 2026년 기상 데이터를 2027년에 매핑 (중복 조인 방지 로직)
+        # 4. 2026년 기상 데이터를 지역별로 집계하여 2027년에 매핑
         weather_cols = ['avg_temp', 'min_temp', 'max_temp', 'precip']
-        # historical_data에서 기상 정보만 추출하여 중복 제거
-        weather_source = self.historical_data[['date', 'stn_id'] + weather_cols].drop_duplicates()
+        print("  [OK] 기상 데이터를 지역(province) 기준으로 사전 집계합니다. ('1일 1지역 1데이터' 원칙)")
+        weather_source = self.historical_data[['date', self.province_col] + weather_cols].groupby(['date', self.province_col]).mean().reset_index()
         last_year_weather = weather_source[weather_source['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
 
-        # 날짜의 '월-일'을 키로 사용하여 매핑
         last_year_weather['month_day'] = last_year_weather['date'].dt.strftime('%m-%d')
         future_df['month_day'] = future_df['date'].dt.strftime('%m-%d')
         
-        # 기상 데이터는 지점(stn_id)별로 하루에 하나만 존재해야 함
-        weather_to_map = last_year_weather[['stn_id', 'month_day'] + weather_cols].drop_duplicates(subset=['stn_id', 'month_day'])
+        weather_to_map = last_year_weather[[self.province_col, 'month_day'] + weather_cols].drop_duplicates(subset=[self.province_col, 'month_day'])
         
-        len_before = len(future_df)
-        future_df = pd.merge(future_df, weather_to_map, on=['stn_id', 'month_day'], how='left')
-        len_after = len(future_df)
-        print(f"  [로그] 기상 데이터 조인 전/후 행 수: {len_before} -> {len_after}")
-
-        if len_after > len_before:
-            future_df = future_df.drop_duplicates(subset=['date', self.province_col, self.item_col], keep='first')
-            print(f"  [로그] 중복 제거 후 행 수: {len(future_df)}")
+        future_df = pd.merge(future_df, weather_to_map, on=[self.province_col, 'month_day'], how='left')
+        future_df = future_df.drop_duplicates().reset_index(drop=True)
         
-        # 기상 데이터 결측치는 전/후 값으로 채움
-        future_df[weather_cols] = future_df.groupby('stn_id')[weather_cols].transform(lambda x: x.ffill().bfill())
+        future_df[weather_cols] = future_df.groupby(self.province_col)[weather_cols].transform(lambda x: x.ffill().bfill())
         future_df = future_df.drop(columns=['month_day'])
 
         # 5. 모델 학습에 사용된 모든 피처 생성
-        # train_model.py 스크립트를 참조하여 동일한 피처를 생성해야 합니다.
         features = self.model.feature_names_
         
-        # 날짜 관련 피처
         future_df['year'] = future_df['date'].dt.year
         future_df['month'] = future_df['date'].dt.month
         future_df['week'] = future_df['date'].dt.isocalendar().week
         future_df['dayofweek'] = future_df['date'].dt.dayofweek
         
-        # 기상 관련 파생 피처
-        future_df = future_df.sort_values(by=['stn_id', 'date']).reset_index(drop=True)
-        future_df['temp_change_weekly'] = future_df.groupby('stn_id')['avg_temp'].diff(7).fillna(0)
-        future_df['precip_sum_3d'] = future_df.groupby('stn_id')['precip'].rolling(window=3).sum().reset_index(0,drop=True).fillna(0)
+        # 기상 관련 파생 피처 (지역별로 계산)
+        future_df = future_df.sort_values(by=[self.province_col, 'date']).reset_index(drop=True)
+        future_df['temp_change_weekly'] = future_df.groupby(self.province_col)['avg_temp'].diff(7).fillna(0)
+        future_df['precip_sum_3d'] = future_df.groupby(self.province_col)['precip'].rolling(window=3).sum().reset_index(0,drop=True).fillna(0)
         future_df['is_peak_season'] = future_df['date'].dt.month.isin([3, 4]).astype(int)
 
         # 학습에 사용된 모든 피처가 있는지 확인하고, 없으면 0이나 'missing'으로 채움
         for col in features:
             if col not in future_df.columns:
-                # 데이터 타입에 따라 적절한 기본값 설정
-                if self.historical_data[col].dtype == 'object':
-                    future_df[col] = 'missing'
+                if self.historical_data[col].dtype == 'object': future_df[col] = 'missing'
+                else: future_df[col] = 0
+                if col == 'stn_id':
+                    pass # stn_id는 더이상 사용되지 않음
                 else:
-                    future_df[col] = 0
-                print(f"  [경고] 예측용 데이터에 '{col}' 피처가 없어 기본값으로 채웁니다.")
+                    print(f"  [경고] 예측용 데이터에 '{col}' 피처가 없어 기본값으로 채웁니다.")
 
         print(f"  [OK] {len(future_df)}건의 2027년 예측용 데이터 생성 완료.")
-        return future_df # 모델링에 필요한 모든 컬럼 반환
+        return future_df
 
     def predict_demand(self, agency_request_multiplier: dict = None) -> pd.DataFrame:
         """

@@ -88,28 +88,30 @@ def prepare_future_features(_historical_data, _model, item_col, province_col):
     """2027년 예측용 피처 데이터프레임을 생성하고 캐시합니다."""
     dates_2027 = pd.date_range(start=f'{SIMULATION_YEAR}-01-01', end=f'{SIMULATION_YEAR}-12-31', freq='D')
     
-    # 예측 단위(품목/지역/관측소) 조합 추출 (수량 뻥튀기 방지)
-    base_cols = [item_col, province_col, 'stn_id']
+    # 예측 단위(품목/지역) 조합 추출 (수량 뻥튀기 방지)
+    base_cols = [item_col, province_col]
     combinations = _historical_data[base_cols].drop_duplicates().dropna()
     
     future_df = pd.DataFrame(dates_2027, columns=['date'])
     future_df['_key'] = 1; combinations['_key'] = 1
     future_df = pd.merge(future_df, combinations, on='_key').drop('_key', axis=1)
-
-    # 모델이 '고객명' 피처를 사용하므로, 대표값으로 설정
     future_df['고객명'] = 'dummy_customer'
 
-    # 2026년 기상 데이터를 2027년에 매핑 (중복 조인 방지)
+    # 2026년 기상 데이터를 지역별로 집계하여 2027년에 매핑
     weather_cols = ['avg_temp', 'min_temp', 'max_temp', 'precip']
-    weather_source = _historical_data[['date', 'stn_id'] + weather_cols].drop_duplicates()
+    
+    # 병합 전 기상 데이터를 groupby().mean()으로 집계하여 '1일 1지역 1데이터' 원칙 강제
+    weather_source = _historical_data[['date', province_col] + weather_cols].groupby(['date', province_col]).mean().reset_index()
     last_year_weather = weather_source[weather_source['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
 
     last_year_weather['month_day'] = last_year_weather['date'].dt.strftime('%m-%d')
     future_df['month_day'] = future_df['date'].dt.strftime('%m-%d')
     
-    weather_to_map = last_year_weather[['stn_id', 'month_day'] + weather_cols].drop_duplicates(subset=['stn_id', 'month_day'])
-    future_df = pd.merge(future_df, weather_to_map, on=['stn_id', 'month_day'], how='left')
-    future_df[weather_cols] = future_df.groupby('stn_id')[weather_cols].transform(lambda x: x.ffill().bfill())
+    weather_to_map = last_year_weather[[province_col, 'month_day'] + weather_cols].drop_duplicates(subset=[province_col, 'month_day'])
+    future_df = pd.merge(future_df, weather_to_map, on=[province_col, 'month_day'], how='left')
+    future_df = future_df.drop_duplicates().reset_index(drop=True)
+
+    future_df[weather_cols] = future_df.groupby(province_col)[weather_cols].transform(lambda x: x.ffill().bfill())
     future_df = future_df.drop(columns=['month_day'])
 
     features = _model.feature_names_
@@ -117,15 +119,18 @@ def prepare_future_features(_historical_data, _model, item_col, province_col):
     future_df['month'] = future_df['date'].dt.month
     future_df['week'] = future_df['date'].dt.isocalendar().week
     future_df['dayofweek'] = future_df['date'].dt.dayofweek
-    future_df = future_df.sort_values(by=['stn_id', 'date']).reset_index(drop=True)
-    future_df['temp_change_weekly'] = future_df.groupby('stn_id')['avg_temp'].diff(7).fillna(0)
-    future_df['precip_sum_3d'] = future_df.groupby('stn_id')['precip'].rolling(window=3).sum().reset_index(0,drop=True).fillna(0)
+    
+    future_df = future_df.sort_values(by=[province_col, 'date']).reset_index(drop=True)
+    future_df['temp_change_weekly'] = future_df.groupby(province_col)['avg_temp'].diff(7).fillna(0)
+    future_df['precip_sum_3d'] = future_df.groupby(province_col)['precip'].rolling(window=3).sum().reset_index(0,drop=True).fillna(0)
     future_df['is_peak_season'] = future_df['date'].dt.month.isin([3, 4]).astype(int)
 
     for col in features:
         if col not in future_df.columns:
             if _historical_data[col].dtype == 'object': future_df[col] = 'missing'
             else: future_df[col] = 0
+            if col == 'stn_id': pass
+            else: print(f"  [경고] 예측용 데이터에 '{col}' 피처가 없어 기본값으로 채웁니다.")
     return future_df
 
 # --- 4. 메인 대시보드 함수 ---
@@ -192,7 +197,8 @@ def main():
         numeric_cols = ["예상 수요(4주)", "권장 재고", "현재 재고", "생산 제언", "리스크 지수(일)"]
         for col in numeric_cols:
             if col in report_df.columns:
-                report_df[col] = pd.to_numeric(report_df[col], errors='coerce').fillna(0)
+                # 콤마가 포함된 문자열 등을 처리하기 위해 강제 변환
+                report_df[col] = pd.to_numeric(report_df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
 
     # --- 대시보드 출력 ---
     st.header(f"📇 재고 최적화 리포트 (기준일: {today.strftime('%Y-%m-%d')})")
