@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 출고 데이터 + 기상 데이터 → 주차별 학습 데이터셋 생성
 실행: python src/build_dataset.py
@@ -79,7 +80,7 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
     
     csv_files = sorted(list(raw_weather_dir.glob("*.csv")))
     if not csv_files:
-        print(f"  ! 경고: '{raw_weather_dir}' 폴더에 병합할 CSV 파일이 없습니다.")
+        print(f"  [경고] '{raw_weather_dir}' 폴더에 병합할 CSV 파일이 없습니다.")
         return pd.DataFrame()
 
     df_list = []
@@ -87,12 +88,12 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
         try:
             df = pd.read_csv(file)
             df_list.append(df)
-            print(f"  ✓ 로드: {file.name} ({len(df)} 행)")
+            print(f"  [OK] 로드: {file.name} ({len(df)} 행)")
         except Exception as e:
-            print(f"  ! 오류: {file.name} 파일 로드 실패 - {e}")
+            print(f"  [오류] {file.name} 파일 로드 실패 - {e}")
 
     if not df_list:
-        print("  ! 경고: 성공적으로 로드된 데이터가 없습니다.")
+        print("  [경고] 성공적으로 로드된 데이터가 없습니다.")
         return pd.DataFrame()
     
     merged_df = pd.concat(df_list, ignore_index=True)
@@ -113,7 +114,7 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
 
     # 2019년부터 데이터 끝까지 모든 날짜에 대한 플레이스홀더 생성
     if merged_df.empty:
-        print("  ! 경고: 유효 데이터가 없어 시계열을 생성할 수 없습니다.")
+        print("  [경고] 유효 데이터가 없어 시계열을 생성할 수 없습니다.")
         return pd.DataFrame()
         
     min_date = pd.to_datetime('2019-01-01')
@@ -143,7 +144,7 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
     # 요청에 따라 날짜 컬럼을 'YYYY-MM-DD' 형식의 문자열로 변경
     final_df['date'] = final_df['date'].dt.strftime('%Y-%m-%d')
     
-    print(f"  ✓ 전처리 완료: 최종 {len(final_df)} 행")
+    print(f"  [OK] 전처리 완료: 최종 {len(final_df)} 행")
     
     return final_df
 
@@ -158,7 +159,7 @@ def analyze_region_data(sales_dir: Path):
     # .xlsx와 .xls 파일을 모두 찾음
     excel_files = sorted(list(sales_dir.glob("*.xlsx"))) + sorted(list(sales_dir.glob("*.xls")))
     if not excel_files:
-        print(f"  ! 경고: '{sales_dir}' 폴더에 분석할 Excel 파일이 없습니다.")
+        print(f"  [경고] '{sales_dir}' 폴더에 분석할 Excel 파일이 없습니다.")
         return
 
     df_list = []
@@ -167,16 +168,16 @@ def analyze_region_data(sales_dir: Path):
             # 첫 번째 시트만 읽음
             df = pd.read_excel(file) 
             df_list.append(df)
-            print(f"  ✓ 로드: {file.name} ({len(df)} 행)")
+            print(f"  [OK] 로드: {file.name} ({len(df)} 행)")
         except Exception as e:
-            print(f"  ! 오류: {file.name} 파일 로드 실패 - {e}")
+            print(f"  [오류] {file.name} 파일 로드 실패 - {e}")
             
     if not df_list:
-        print("  ! 경고: 분석할 데이터를 로드하지 못했습니다.")
+        print("  [경고] 분석할 데이터를 로드하지 못했습니다.")
         return
         
     merged_df = pd.concat(df_list, ignore_index=True)
-    print(f"\n  ✓ 총 {len(excel_files)}개 파일, {len(merged_df)} 행 데이터 병합 완료.")
+    print(f"\n  [OK] 총 {len(excel_files)}개 파일, {len(merged_df)} 행 데이터 병합 완료.")
 
     # 지역 관련 컬럼 찾기
     region_col = None
@@ -187,11 +188,11 @@ def analyze_region_data(sales_dir: Path):
             break
     
     if not region_col:
-        print(f"  ! 오류: 데이터에서 지역 관련 컬럼({', '.join(possible_cols)})을 찾을 수 없습니다.")
-        print(f"  > 사용 가능한 컬럼: {list(merged_df.columns)}")
+        print(f"  [오류] 데이터에서 지역 관련 컬럼({', '.join(possible_cols)})을 찾을 수 없습니다.")
+        print(f"  -> 사용 가능한 컬럼: {list(merged_df.columns)}")
         return
         
-    print(f"  ✓ 분석 대상 컬럼: '{region_col}'")
+    print(f"  [OK] 분석 대상 컬럼: '{region_col}'")
     
     # NaN 값 및 공백 처리
     cleaned_series = merged_df[region_col].fillna('N/A').astype(str).str.strip()
@@ -218,7 +219,7 @@ def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
     weekly_path = weather_dir / "weekly_features.csv"
     
     if weekly_path.exists():
-        print(f"  ✓ 통합 기상 데이터 로드: {weekly_path}")
+        print(f"  [OK] 통합 기상 데이터 로드: {weekly_path}")
         weather = pd.read_csv(weekly_path)
         
         # 전국 평균 (stnId == 999) 또는 전체 평균
@@ -262,7 +263,7 @@ def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
         # 2순위: weather_processed.csv
         processed_path = Path("data/weather_processed.csv")
         if processed_path.exists():
-            print(f"  ✓ 대체 기상 데이터 로드: {processed_path}")
+            print(f"  [OK] 대체 기상 데이터 로드: {processed_path}")
             weekly = pd.read_csv(processed_path)
             # 보성 데이터 없으면 전국 평균으로 대체
             if "boseong_avg_temp" not in weekly.columns:
@@ -282,7 +283,7 @@ def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
     weekly["ISO연도"] = weekly["ISO연도"].astype(int)
     weekly["ISO주차"] = weekly["ISO주차"].astype(int)
     
-    print(f"  ✓ 기상 데이터: {len(weekly)}주 ({weekly['ISO연도'].min()}~{weekly['ISO연도'].max()}년)")
+    print(f"  [OK] 기상 데이터: {len(weekly)}주 ({weekly['ISO연도'].min()}~{weekly['ISO연도'].max()}년)")
     
     return weekly
 
