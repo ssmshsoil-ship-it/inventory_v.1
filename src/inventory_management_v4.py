@@ -178,6 +178,7 @@ class InventoryOptimizerV4:
                     future_df[col] = 'missing'
                 else:
                     future_df[col] = 0
+                print(f"  [경고] 예측용 데이터에 '{col}' 피처가 없어 기본값으로 채웁니다.")
 
         print(f"  [OK] {len(future_df)}건의 2027년 예측용 데이터 생성 완료.")
         return future_df # 모델링에 필요한 모든 컬럼 반환
@@ -194,9 +195,28 @@ class InventoryOptimizerV4:
         
         features_for_prediction = self.model.feature_names_
         predictions = self.model.predict(future_df[features_for_prediction])
-        
-        predicted_demand = future_df.copy()
-        predicted_demand['predicted_demand'] = np.maximum(0, predictions) # 예측값은 0 이상
+
+        # 만약 예측값의 합이 비정상적으로 낮으면, Backup 로직 가동
+        if predictions.sum() < 1:
+            print("  [경고] 모델 예측값이 0에 가깝습니다. 피처 불일치 가능성이 있습니다. Backup 로직을 가동합니다.")
+            
+            # 작년(2026년) 데이터를 기반으로 예측값 생성
+            last_year_data = self.historical_data[self.historical_data['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
+            last_year_data['month_day'] = last_year_data['date'].dt.strftime('%m-%d')
+            
+            # 품목별/월-일별 평균 출고량을 계산
+            backup_demand_map = last_year_data.groupby([self.item_col, 'month_day'])[self.qty_col].mean().to_dict()
+            
+            future_df['month_day'] = future_df['date'].dt.strftime('%m-%d')
+            # 튜플 키 (품목, 월-일)로 매핑
+            future_df['predicted_demand'] = future_df.apply(
+                lambda row: backup_demand_map.get((row[self.item_col], row['month_day']), 0), axis=1
+            )
+            future_df = future_df.drop(columns=['month_day'])
+            predicted_demand = future_df.copy()
+        else:
+            predicted_demand = future_df.copy()
+            predicted_demand['predicted_demand'] = np.maximum(0, predictions) # 예측값은 0 이상
 
         # 대리점 긴급 요청 가중치 적용
         if agency_request_multiplier:
@@ -214,23 +234,37 @@ class InventoryOptimizerV4:
     def _initialize_inventory(self):
         """초기 재고 상태를 가상으로 생성합니다."""
         # 실제로는 DB나 ERP에서 현재 재고 데이터를 가져와야 합니다.
-        # 품목별로 4주치 평균 수요를 초기 재고로 가정합니다.
+        # 테스트를 위해, 품목별 과거 평균 주간 수요의 50%를 초기 재고로 가정합니다.
+        print("\n- 가상 초기 재고 생성 시작 (과거 평균의 50% 수준)...")
         avg_weekly_demand = self.historical_data.groupby(self.item_col)[self.qty_col].sum() / self.historical_data['date'].dt.to_period('W').nunique()
-        initial_stock = (avg_weekly_demand * SAFETY_STOCK_WEEKS).to_dict()
         
-        # 재고 신선도 추적을 위해 (수량, 생산일) 형태로 저장
+        # 안전 재고의 50% 수준으로 초기 재고 설정
+        initial_stock = (avg_weekly_demand * SAFETY_STOCK_WEEKS * 0.5).to_dict()
+        
+        # 재고 신선도 추적을 위해 (수량, 생산일) 형태로 저장 (생산일 랜덤화)
         today = pd.to_datetime(datetime.now().date())
-        inventory = {
-            item: [(qty, today)] for item, qty in initial_stock.items()
-        }
-        print(f"\n- 가상 초기 재고 생성 완료 (총 {len(inventory)}개 품목).")
+        inventory = {}
+        for item, qty in initial_stock.items():
+            if qty > 0:
+                # 재고를 2개 배치로 나누고, 생산일을 최근 90일 내로 랜덤 설정
+                qty1 = int(qty * 0.5)
+                qty2 = int(qty) - qty1
+                prod_date1 = today - timedelta(days=np.random.randint(0, 90))
+                prod_date2 = today - timedelta(days=np.random.randint(0, 90))
+                inventory[item] = []
+                if qty1 > 0: inventory[item].append((qty1, prod_date1))
+                if qty2 > 0: inventory[item].append((qty2, prod_date2))
+
+        print(f"  [OK] 가상 초기 재고 생성 완료 (총 {len(inventory)}개 품목).")
         return inventory
 
     def run_simulation(self, demand_forecast: pd.DataFrame, agency_request_multiplier: dict = None):
         """재고 시뮬레이션을 실행하고 실무자용 리포트를 생성합니다."""
         print("\n- 재고 시뮬레이션 및 리포트 생성 시작...")
         
-        today = pd.to_datetime(datetime.now().date())
+        # 시뮬레이션 기준일을 예측 시작일(2027-01-01)로 설정
+        today = pd.to_datetime(f'{SIMULATION_YEAR}-01-01')
+        print(f"  [정보] 시뮬레이션 기준일: {today.strftime('%Y-%m-%d')}")
         
         # --- 1. 기초 데이터 생성 ---
         report_data = []
