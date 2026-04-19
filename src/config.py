@@ -29,9 +29,9 @@ if os.path.exists(ENV_FILE_PATH):
     except Exception as e:
         print(f"   ⚠️  파일 읽기 오류: {e}")
     
-    # .env 파일 로드
-    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True)
-    print(f"4. ✓ load_dotenv() 실행 완료")
+    # .env 파일 로드 (시스템 환경 변수보다 .env 파일 우선)
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True, verbose=True)
+    print(f"4. ✓ load_dotenv(override=True) 실행 완료")
     
     # 로드 직후 환경 변수 확인
     loaded_key = os.getenv('WEATHER_API_KEY')
