@@ -61,6 +61,15 @@ def train_delivery_model():
     ]
     features = [col for col in df.columns if col not in features_to_exclude]
     print("  [OK] 금액 관련 피처를 학습에서 제외합니다.")
+
+    # 필수 기상 피처 포함 여부 확인
+    weather_features = ['avg_temp', 'min_temp', 'max_temp', 'precip', 'temp_change_weekly', 'precip_sum_3d']
+    missing_weather_features = [f for f in weather_features if f not in features]
+    if missing_weather_features:
+        print(f"  [경고] 필수 기상 피처가 누락되었습니다: {missing_weather_features}")
+    else:
+        print("  [OK] 주요 기상 피처가 학습에 포함됩니다.")
+
     categorical_features = df[features].select_dtypes(include=['object', 'category']).columns.tolist()
     numerical_features = df[features].select_dtypes(include=np.number).columns.tolist()
 
@@ -95,7 +104,7 @@ def train_delivery_model():
     model = CatBoostRegressor(
         iterations=2000,
         learning_rate=0.05,
-        depth=10,
+        depth=8,
         loss_function='RMSE',
         eval_metric='MAE',
         cat_features=categorical_features,
@@ -118,10 +127,21 @@ def train_delivery_model():
     print(f"  [참고] 검증 데이터 RMSE: {rmse:.2f}")
 
     print("\n- 6. 피처 중요도 분석")
-    feature_importances = pd.Series(model.get_feature_importance(), index=features)
-    top_20_features = feature_importances.sort_values(ascending=False).head(20)
+    feature_importances = pd.Series(model.get_feature_importance(), index=features).sort_values(ascending=False)
+    
     print("  [상위 20개 피처 중요도]")
-    print(top_20_features.to_string())
+    print(feature_importances.head(20).to_string())
+
+    # 주요 기상 변수의 중요도 순위 강조
+    print("\n  [주요 기상 변수 순위]")
+    weather_features = ['avg_temp', 'min_temp', 'max_temp', 'precip', 'temp_change_weekly', 'precip_sum_3d']
+    for feature in weather_features:
+        if feature in feature_importances.index:
+            rank = feature_importances.index.get_loc(feature) + 1
+            importance = feature_importances[feature]
+            print(f"  - {feature}: {rank}위 (중요도: {importance:.4f})")
+        else:
+            print(f"  - {feature}: 순위 없음 (학습에 미포함)")
 
     print("\n- 7. 예측 결과 차트 생성")
     val_results = val_df[['date']].copy()
@@ -139,13 +159,13 @@ def train_delivery_model():
     plt.grid(True)
     
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    plt.savefig("reports/prediction_v2.png")
-    print(f"  [OK] 차트 저장 완료: reports/prediction_v2.png")
+    plt.savefig("reports/prediction_v3.png")
+    print(f"  [OK] 차트 저장 완료: reports/prediction_v3.png")
 
     print("\n- 8. 모델 저장")
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    model.save_model("models/sh_delivery_v2.cbm")
-    print(f"  [OK] 모델 저장 완료: models/sh_delivery_v2.cbm")
+    model.save_model("models/sh_delivery_v3.cbm")
+    print(f"  [OK] 모델 저장 완료: models/sh_delivery_v3.cbm")
 
 
 if __name__ == "__main__":
