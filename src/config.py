@@ -23,12 +23,12 @@ if os.path.exists(ENV_FILE_PATH):
                 # 환경 변수에 직접 등록
                 os.environ[key.strip()] = value.strip()
     except Exception as e:
-        print(f"   ⚠️  .env 파일 수동 파싱 중 오류 발생: {e}")
+        print(f"   [경고] .env 파일 수동 파싱 중 오류 발생: {e}")
 
     # load_dotenv를 override=True 옵션과 함께 실행하여 수동 등록된 값을 유지하거나 덮어쓰도록 함
     load_dotenv(dotenv_path=ENV_FILE_PATH, override=True)
 else:
-    print(f"⚠️  .env 파일을 찾을 수 없습니다: {ENV_FILE_PATH}")
+    print(f"[경고] .env 파일을 찾을 수 없습니다: {ENV_FILE_PATH}")
 
 DATA_DIR      = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
@@ -42,13 +42,13 @@ WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 if WEATHER_API_KEY and len(WEATHER_API_KEY) > 10:
     print(f"[OK] [Gemini] API Key Successfully Loaded: {WEATHER_API_KEY[:4]}****")
 else:
-    print(f"❌ API 키를 찾을 수 없거나 유효하지 않습니다!")
+    print(f"[오류] API 키를 찾을 수 없거나 유효하지 않습니다!")
     print(f"\n해결 방법:")
     print(f"1. 프로젝트 루트 폴더의 .env 파일을 확인하세요. (경로: {ENV_FILE_PATH})")
     print(f"2. 다음 형식으로 API 키가 정확히 입력되었는지 확인하세요:")
     print(f"   WEATHER_API_KEY=your_actual_api_key_here")
     print(f"3. 키 값의 앞뒤에 불필요한 공백이 없는지 확인하세요.")
-    print(f"\n❌ API 키가 없으면 기상 데이터를 수집할 수 없으므로 프로그램을 종료합니다.")
+    print(f"\n[오류] API 키가 없으면 기상 데이터를 수집할 수 없으므로 프로그램을 종료합니다.")
     
     # API 키가 없으면 프로그램 종료
     import sys

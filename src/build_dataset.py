@@ -51,7 +51,7 @@ def aggregate_weekly(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_erp_historical(path: Path) -> pd.DataFrame:
     """2019-2022 ERP 전처리 결과 로드 (erp_2019_2022.csv)"""
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, encoding="utf-8")
     df["ISO연도"] = df["ISO연도"].astype(int)
     df["ISO주차"] = df["ISO주차"].astype(int)
     df["수도용_포"] = df["수도용_포"].fillna(0).astype(int)
@@ -86,7 +86,7 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
     df_list = []
     for file in csv_files:
         try:
-            df = pd.read_csv(file)
+            df = pd.read_csv(file, encoding="utf-8")
             df_list.append(df)
             print(f"  [OK] 로드: {file.name} ({len(df)} 행)")
         except Exception as e:
@@ -220,7 +220,7 @@ def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
     
     if weekly_path.exists():
         print(f"  [OK] 통합 기상 데이터 로드: {weekly_path}")
-        weather = pd.read_csv(weekly_path)
+        weather = pd.read_csv(weekly_path, encoding="utf-8")
         
         # 전국 평균 (stnId == 999) 또는 전체 평균
         if 'stnId' in weather.columns:
@@ -264,7 +264,7 @@ def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
         processed_path = Path("data/weather_processed.csv")
         if processed_path.exists():
             print(f"  [OK] 대체 기상 데이터 로드: {processed_path}")
-            weekly = pd.read_csv(processed_path)
+            weekly = pd.read_csv(processed_path, encoding="utf-8")
             # 보성 데이터 없으면 전국 평균으로 대체
             if "boseong_avg_temp" not in weekly.columns:
                 weekly["boseong_avg_temp"] = weekly["avg_temp"]
