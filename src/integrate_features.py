@@ -65,7 +65,18 @@ def integrate_and_engineer_features():
     print("\n- 2. 기상 데이터 결합 준비")
     # '출고일자' 또는 유사 컬럼을 'date'로 통일하고 datetime 형식으로 변환
     sales_df = sales_df.rename(columns={'출고일자': 'date', '일자': 'date'})
-    sales_df['date'] = pd.to_datetime(sales_df['date']).dt.normalize()
+    
+    # 다양한 날짜 형식(하이픈, 슬래시 등)을 유연하게 처리
+    original_rows = len(sales_df)
+    sales_df['date'] = pd.to_datetime(sales_df['date'], errors='coerce', format='mixed')
+    
+    # 날짜 변환 실패(NaT) 행이 있다면 제거
+    sales_df = sales_df.dropna(subset=['date'])
+    removed_rows = original_rows - len(sales_df)
+    if removed_rows > 0:
+        print(f"  [경고] 유효하지 않은 날짜 형식으로 인해 {removed_rows}개 행을 제거했습니다.")
+        
+    sales_df['date'] = sales_df['date'].dt.normalize()
     # 매핑 테이블을 이용해 '지점' (기상 관측소 ID) 컬럼 추가
     sales_df['지점'] = sales_df['province'].map(PROVINCE_TO_STATION_MAP)
     print("  [OK] 판매 데이터에 기상 관측소 ID 매핑 완료.")
