@@ -41,6 +41,34 @@ def train_delivery_model():
     df['date'] = pd.to_datetime(df['date'])
     print(f"  [OK] 데이터 로드 완료: {df.shape[0]}행, {df.shape[1]}컬럼")
 
+    print("\n- 1-2. 데이터 사전 집계 (지역 단위로 재구성)")
+    province_col = next((c for c in ['province', '지역'] if c in df.columns), None)
+    item_col = next((c for c in ['품목', '품명'] if c in df.columns), None)
+    
+    if not province_col or not item_col:
+        print("[경고] 'province' 또는 '품목' 컬럼이 없어 집계를 건너뜁니다.")
+    else:
+        weather_cols = ['avg_temp', 'min_temp', 'max_temp', 'precip']
+        group_cols = ['date', province_col, item_col]
+        
+        # 집계 명세: 수량은 합산, 기상은 평균, 나머지는 대표값(첫번째 값) 사용
+        agg_spec = {col: 'first' for col in df.columns if col not in group_cols + ['출고수량'] + weather_cols}
+        agg_spec['출고수량'] = 'sum'
+        for col in weather_cols:
+            if col in df.columns:
+                agg_spec[col] = 'mean'
+        
+        df = df.groupby(group_cols, as_index=False).agg(agg_spec)
+        print(f"  [OK] 지역별 데이터 집계 완료. 현재 데이터: {len(df)}행")
+
+        # 집계 후 파생 변수 재계산
+        df = df.sort_values(by=[province_col, 'date']).reset_index(drop=True)
+        if 'avg_temp' in df.columns:
+            df['temp_change_weekly'] = df.groupby(province_col)['avg_temp'].diff(7).fillna(0)
+        if 'precip' in df.columns:
+            df['precip_sum_3d'] = df.groupby(province_col)['precip'].rolling(window=3).sum().reset_index(0,drop=True).fillna(0)
+        print("  [OK] 지역 기준 파생 변수 재계산 완료.")
+
     # 예측 대상 컬럼(Target) 가정
     # 요청에 명시되지 않아, 판매 데이터의 핵심 지표인 '출고수량'을 목표 변수로 가정합니다.
     target_col = '출고수량'
@@ -57,10 +85,11 @@ def train_delivery_model():
 
     # 학습 피처 정의
     features_to_exclude = [
-        target_col, 'date', '공급가', '단가', '합계액', '공급가액', '부가세'
+        target_col, 'date', '공급가', '단가', '합계액', '공급가액', '부가세',
+        'stn_id', '고객명' # 지역 단위로 집계되었으므로 개별 관측소/고객 정보는 제외
     ]
     features = [col for col in df.columns if col not in features_to_exclude]
-    print("  [OK] 금액 관련 피처를 학습에서 제외합니다.")
+    print("  [OK] 금액 관련 및 집계 후 불필요한 피처를 학습에서 제외합니다.")
 
     # 필수 기상 피처 포함 여부 확인
     weather_features = ['avg_temp', 'min_temp', 'max_temp', 'precip', 'temp_change_weekly', 'precip_sum_3d']
