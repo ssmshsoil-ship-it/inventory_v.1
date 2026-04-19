@@ -5,29 +5,33 @@ from dotenv import load_dotenv
 # 프로젝트 루트 경로 설정 (절대 경로)
 ROOT = Path(r"C:\ai_workspace\sh-ai-model")
 
-# .env 파일 절대 경로로 명시
-env_path = r"C:\ai_workspace\sh-ai-model\.env"
+# .env 파일 절대 경로로 명시 (어떤 폴더에서 실행하든 동일한 경로 사용)
+ENV_FILE_PATH = r"C:\ai_workspace\sh-ai-model\.env"
 
-# .env 파일 로드
-if os.path.exists(env_path):
-    load_dotenv(dotenv_path=env_path)
-    print(f"✓ .env 파일 로드 성공: {env_path}")
+# .env 파일 존재 여부 확인 및 로드
+if os.path.exists(ENV_FILE_PATH):
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True)
+    print(f"✓ .env 파일 로드 성공: {ENV_FILE_PATH}")
 else:
-    print(f"⚠️  .env 파일을 찾을 수 없습니다: {env_path}")
+    print(f"⚠️  .env 파일을 찾을 수 없습니다: {ENV_FILE_PATH}")
+    print(f"⚠️  다음 위치에 .env 파일을 생성하세요: {ENV_FILE_PATH}")
 
 DATA_DIR      = ROOT / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 MODELS_DIR    = ROOT / "models"
 REPORTS_DIR   = ROOT / "reports"
 
-# API 키
-WEATHER_API_KEY = os.getenv('WEATHER_API_KEY', '048234d69b91cf5b6c18b1381151060d5c5bb1b1dd26b0fcf26d777d7e63fa24')
+# API 키 로드
+WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 
-# API 키 확인
-if WEATHER_API_KEY:
-    print(f"✓ API Key Loaded: {WEATHER_API_KEY[:4]}... (총 {len(WEATHER_API_KEY)}자)")
+# API 키 확인 및 검증
+if WEATHER_API_KEY and len(WEATHER_API_KEY) > 10:
+    print(f"✓ API Key Loaded: {WEATHER_API_KEY[:4]}****... (총 {len(WEATHER_API_KEY)}자)")
+    print(f"✅ 기상 데이터 수집 준비 완료!")
 else:
-    print("⚠️  API 키를 찾을 수 없습니다.")
+    print("⚠️  API 키를 찾을 수 없거나 유효하지 않습니다.")
+    print(f"⚠️  {ENV_FILE_PATH} 파일에 WEATHER_API_KEY를 설정하세요.")
+    WEATHER_API_KEY = None
 
 # 원본 데이터
 MASTER_DB     = DATA_DIR / "master_db_v.0.xlsx"
