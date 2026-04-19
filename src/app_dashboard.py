@@ -212,16 +212,22 @@ def main():
                     last_year_start = future_start_date.replace(year=future_start_date.year - 1)
                     last_year_end = future_end_date.replace(year=future_end_date.year - 1)
                     demand_this_year = future_demand_period[future_demand_period[province_col] == region]['predicted_demand'].sum()
+
+                    if region == '전남':
+                        print(f"수정된 전남 4주 예측 총합: {demand_this_year:,.0f}개")
                     
                     if demand_this_year > 1_000_000:
                         st.warning(f"{region}의 4주 예측 수요({demand_this_year:,.0f}개)가 100만 개를 초과하여 비정상적으로 보입니다.")
                     
                     demand_last_year = historical_data[(historical_data['date'].between(last_year_start, last_year_end)) & (historical_data[province_col] == region)][qty_col].sum()
                     
-                    delta_text = "-"
-                    if pd.notna(demand_this_year) and pd.notna(demand_last_year) and demand_last_year >= 100:
+                    delta_text = "N/A"
+                    if pd.notna(demand_last_year) and demand_last_year >= 100:
                         change_pct = (demand_this_year - demand_last_year) / demand_last_year * 100
-                        delta_text = f"{change_pct:+.1f} %"
+                        if abs(change_pct) > 1000:
+                            delta_text = "N/A" # 데이터 매칭 오류로 간주
+                        else:
+                            delta_text = f"{change_pct:+.1f} %"
                         
                     st.metric(label=f"{region} 수요 변화 (작년 동기 대비)", value=f"{demand_this_year:,.0f} 개", delta=delta_text)
     
