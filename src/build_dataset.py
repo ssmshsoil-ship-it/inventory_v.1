@@ -90,13 +90,25 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
 
     df_list = []
     for file in csv_files:
-        try:
-            # 인코딩 자동 감지 (utf-8, cp949)
+        df = None
+        # 인코딩 자동 감지 (utf-8 -> cp949 -> euc-kr 순으로 시도)
+        for encoding in ['utf-8', 'cp949', 'euc-kr']:
             try:
-                df = pd.read_csv(file, encoding='utf-8')
+                df = pd.read_csv(file, encoding=encoding)
+                print(f"  [OK] 로드 ({encoding}): {file.name} ({len(df)} 행)")
+                break  # 성공하면 루프 중단
             except UnicodeDecodeError:
-                df = pd.read_csv(file, encoding='cp949')
+                continue # 다음 인코딩 시도
+            except Exception as e:
+                print(f"  [오류] '{file.name}' 파일 로드 중 예상치 못한 오류 발생 ({encoding}) - {e}")
+                df = None # 오류 발생 시 df를 None으로 설정하여 아래에서 처리
+                break
+        
+        if df is None:
+            print(f"  [경고] '{file.name}' 파일을 처리할 수 없습니다. 건너뜁니다.")
+            continue
             
+        try:
             # 컬럼명 유연화
             # 날짜 컬럼: '일시', 'tm', 'date' -> 'date'
             date_col_map = {'일시': 'date', 'tm': 'date'}
@@ -113,9 +125,8 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
                 continue
             
             df_list.append(df)
-            print(f"  [OK] 로드: {file.name} ({len(df)} 행)")
         except Exception as e:
-            print(f"  [오류] {file.name} 파일 로드 실패 - {e}")
+            print(f"  [오류] {file.name} 파일 처리 중 오류 발생 - {e}")
 
     if not df_list:
         print("  [경고] 성공적으로 로드된 데이터가 없습니다.")

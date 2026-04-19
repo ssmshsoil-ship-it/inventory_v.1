@@ -96,7 +96,7 @@ def integrate_and_engineer_features():
         final_df = sales_df.copy()
         # 특성 공학에서 사용할 컬럼들을 NaN으로 추가
         final_df['avg_temp'] = np.nan
-        final_df['rainfall'] = np.nan
+        final_df['rain_sum'] = np.nan
         print("\n- 4. 판매 + 기상 데이터 결합 완료 (기상 데이터 없음)")
     else:
         # merge를 위해 날짜 형식 통일
@@ -106,12 +106,12 @@ def integrate_and_engineer_features():
         weather_rename_map = {
             '평균기온(°C)': 'avg_temp',
             '평균 기온': 'avg_temp',
-            '일강수량(mm)': 'rainfall',
-            '강수량': 'rainfall',
+            '일강수량(mm)': 'rain_sum',
+            '강수량': 'rain_sum',
         }
         weather_df.rename(columns=weather_rename_map, inplace=True)
         
-        required_cols = ['date', 'stn_id', 'avg_temp', 'rainfall']
+        required_cols = ['date', 'stn_id', 'avg_temp', 'rain_sum']
         # 존재하는 컬럼만 선택
         weather_df = weather_df[[col for col in required_cols if col in weather_df.columns]]
         print("\n- 3. 일별 기상 데이터 로드 및 정제 완료")
@@ -121,15 +121,19 @@ def integrate_and_engineer_features():
         print("\n- 4. 판매 + 기상 데이터 결합 완료")
 
         # 기상 데이터 결합률 확인
-        nan_count = final_df['avg_temp'].isna().sum()
-        total_count = len(final_df)
-        if total_count > 0:
-            nan_rate = (nan_count / total_count) * 100
-            merge_rate = 100 - nan_rate
-            print(f"  [확인] 기상 데이터 누락 행: {nan_count}건 / {total_count}건 ({nan_rate:.2f}%)")
-            print(f"  [확인] 기상 데이터 결합률: {merge_rate:.2f}%")
-            if merge_rate < 95:
-                print("  [경고] 기상 데이터 결합률이 95% 미만입니다. 고객-지역 매핑 또는 기상 데이터 자체를 점검해야 합니다.")
+        if 'avg_temp' not in final_df.columns:
+            print("  [오류] 'avg_temp' 컬럼이 없어 기상 데이터 결합률을 확인할 수 없습니다.")
+            print(f"  -> final_df에 있는 실제 컬럼명: {final_df.columns.tolist()}")
+        else:
+            nan_count = final_df['avg_temp'].isna().sum()
+            total_count = len(final_df)
+            if total_count > 0:
+                nan_rate = (nan_count / total_count) * 100
+                merge_rate = 100 - nan_rate
+                print(f"  [확인] 기상 데이터 누락 행: {nan_count}건 / {total_count}건 ({nan_rate:.2f}%)")
+                print(f"  [확인] 기상 데이터 결합률: {merge_rate:.2f}%")
+                if merge_rate < 95:
+                    print("  [경고] 기상 데이터 결합률이 95% 미만입니다. 고객-지역 매핑 또는 기상 데이터 자체를 점검해야 합니다.")
 
     # 5. 특성 공학
     print("\n- 5. 특성 공학(Feature Engineering) 시작")
@@ -139,8 +143,8 @@ def integrate_and_engineer_features():
     # 그룹별(지점별)로 계산해야 정확함
     if 'avg_temp' in final_df.columns:
         final_df['temp_change_weekly'] = final_df.groupby('stn_id')['avg_temp'].diff(7)
-    if 'rainfall' in final_df.columns:
-        final_df['rain_sum_3d'] = final_df.groupby('stn_id')['rainfall'].rolling(window=3).sum().reset_index(0,drop=True)
+    if 'rain_sum' in final_df.columns:
+        final_df['rain_sum_3d'] = final_df.groupby('stn_id')['rain_sum'].rolling(window=3).sum().reset_index(0,drop=True)
     
     final_df['is_peak_season'] = final_df['date'].dt.month.isin([3, 4]).astype(int)
     
