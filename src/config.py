@@ -52,14 +52,14 @@ PROCESSED_DIR = DATA_DIR / "processed"
 MODELS_DIR    = ROOT / "models"
 REPORTS_DIR   = ROOT / "reports"
 
-# API 키 로드 (KMA_API_KEY 또는 WEATHER_API_KEY)
-WEATHER_API_KEY = os.getenv('KMA_API_KEY') or os.getenv('WEATHER_API_KEY')
+# API 키 로드
+WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 
 # API 키 확인 및 검증
 print(f"\n{'='*70}")
 print("🔑 API 키 검증")
 print(f"{'='*70}")
-print(f"찾고 있는 환경 변수명: 'KMA_API_KEY' 또는 'WEATHER_API_KEY'")
+print(f"찾고 있는 환경 변수명: 'WEATHER_API_KEY'")
 print(f"로드된 값: {WEATHER_API_KEY if WEATHER_API_KEY else 'None'}")
 
 if WEATHER_API_KEY and len(WEATHER_API_KEY) > 10:
