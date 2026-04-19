@@ -103,33 +103,43 @@ def integrate_and_engineer_features():
         weather_df['date'] = pd.to_datetime(weather_df['date']).dt.normalize()
         
         print(f"  [진단] 원본 기상 데이터 컬럼: {weather_df.columns.tolist()}")
-        # 표준 영문 컬럼명으로 유연하게 변경하고 필요한 컬럼만 선택
+        # 표준 영문 컬럼명으로 1:1 매핑 (중복 방지)
+        mapping_rules = {
+            'avg_temp': ['avgTa', '평균기온(°C)', '평균기온', '평균 기온'],
+            'min_temp': ['minTa', '최저기온(°C)', '최저기온'],
+            'max_temp': ['maxTa', '최고기온(°C)', '최고기온'],
+            'precip':   ['sumRn', '일강수량(mm)', '강수량', 'rain_day'],
+        }
+        
         rename_map = {}
-        for col in weather_df.columns:
-            lower_col = col.lower()
-            # 기온 관련 컬럼명 표준화 (avg_temp) - '평균'과 '기온' 동시 포함 또는 'temp'/'ta' 포함
-            if ('평균' in col and '기온' in col) or 'temp' in lower_col or 'ta' in lower_col:
-                rename_map[col] = 'avg_temp'
-            # 강수량 관련 컬럼명 표준화 (precip)
-            elif '강수량' in col or 'rain' in lower_col:
-                rename_map[col] = 'precip'
-
-        weather_df.rename(columns=rename_map, inplace=True)
+        for new_name, old_names_list in mapping_rules.items():
+            if new_name in weather_df.columns:
+                continue  # 이미 목표 컬럼명이 존재하면 건너뛰기
+            for old_name in old_names_list:
+                if old_name in weather_df.columns:
+                    rename_map[old_name] = new_name
+                    break # 첫 번째 매칭되는 컬럼만 사용
+        
         if rename_map:
+            weather_df.rename(columns=rename_map, inplace=True)
             print(f"  [OK] 기상 데이터 컬럼명 표준화 완료. 변경사항: {rename_map}")
 
         print(f"  [진단] 컬럼명 변경 후 weather_df 컬럼: {weather_df.columns.tolist()}")
 
-        # avg_temp 존재 여부 확인 및 타입 변환, 없으면 중단
+        # 기상 컬럼 타입 변환
+        weather_cols_to_convert = ['avg_temp', 'min_temp', 'max_temp', 'precip']
+        for col in weather_cols_to_convert:
+            if col in weather_df.columns:
+                weather_df[col] = pd.to_numeric(weather_df[col], errors='coerce')
+        print(f"  [OK] 주요 기상 컬럼을 안전하게 숫자형으로 변환했습니다.")
+        
+        # avg_temp가 없으면 경고 후 중단
         if 'avg_temp' not in weather_df.columns:
             print("\n[오류] 기상 데이터에서 'avg_temp'로 매핑할 기온 컬럼을 찾지 못했습니다.")
             print(" -> 처리를 중단합니다. raw/weather/ 폴더의 CSV 파일 컬럼명을 확인하세요.")
             return
 
-        weather_df['avg_temp'] = pd.to_numeric(weather_df['avg_temp'], errors='coerce')
-        print("  [OK] 'avg_temp' 컬럼을 안전하게 숫자형으로 변환했습니다.")
-        
-        required_cols = ['date', 'stn_id', 'avg_temp', 'precip']
+        required_cols = ['date', 'stn_id', 'avg_temp', 'min_temp', 'max_temp', 'precip']
         # 존재하는 컬럼만 선택
         weather_df = weather_df[[col for col in required_cols if col in weather_df.columns]]
         print("\n- 3. 일별 기상 데이터 로드 및 정제 완료")
@@ -202,11 +212,13 @@ def integrate_and_engineer_features():
         final_df.to_csv(FINAL_TRAINING_DATA, index=False, encoding='utf-8-sig')
         print(f"  [OK] 저장 완료: {FINAL_TRAINING_DATA}")
         print(f"  -> 최종 데이터: {final_df.shape[0]}행, {final_df.shape[1]}컬럼")
+
+        print(f"\n[결과 확인] Final DataFrame 컬럼 목록:")
+        print(final_df.columns.tolist())
         
-        # 출력할 컬럼이 존재하는지 확인하여 KeyError 방지
-        display_cols = ['date', '고객명', 'province', 'avg_temp', 'precip', 'precip_sum_3d', 'is_peak_season']
-        existing_display_cols = [col for col in display_cols if col in final_df.columns]
-        print(f"  -> 결과 (일부 컬럼):\n{final_df[existing_display_cols].head().to_string()}")
+        print("\n[결과 확인] Final DataFrame 상위 5행:")
+        print(final_df.head().to_string())
+        
     except Exception as e:
         print(f"  [오류] 파일 저장 실패: {e}")
 
