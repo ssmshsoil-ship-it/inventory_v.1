@@ -226,53 +226,31 @@ class InventoryOptimizerV4:
         print(f"\n- 가상 초기 재고 생성 완료 (총 {len(inventory)}개 품목).")
         return inventory
 
-    def run_simulation(self, demand_forecast: pd.DataFrame):
-        """재고 시뮬레이션을 실행하고 일별 리포트를 생성합니다."""
+    def run_simulation(self, demand_forecast: pd.DataFrame, agency_request_multiplier: dict = None):
+        """재고 시뮬레이션을 실행하고 실무자용 리포트를 생성합니다."""
         print("\n- 재고 시뮬레이션 및 리포트 생성 시작...")
         
-        # 오늘 날짜를 기준으로 리포트 생성 (Timestamp로 변환하여 타입 일치)
         today = pd.to_datetime(datetime.now().date())
         
-        # --- 1. 재고 신선도 경고 리포트 ---
-        freshness_warnings = []
-        expired_risk_cost = 0
-        
-        for item, stock_batches in self.current_inventory.items():
-            for qty, production_date in stock_batches:
-                age = (today - production_date).days
-                if age > SHELF_LIFE_DAYS:
-                    # 유통기한 초과
-                    risk_cost = qty * REPROCESSING_COST_PER_UNIT
-                    freshness_warnings.append(f"  - [만료] 품목: {item}, 수량: {qty}, 생산일: {production_date.strftime('%Y-%m-%d')}, 비용 리스크: {risk_cost:,.0f}원")
-                    expired_risk_cost += risk_cost
-                elif age > SHELF_LIFE_DAYS - 30:
-                    # 유통기한 임박 (30일 이내)
-                    freshness_warnings.append(f"  - [주의] 품목: {item}, 수량: {qty}, 생산일: {production_date.strftime('%Y-%m-%d')}, 남은 기간: {SHELF_LIFE_DAYS - age}일")
-
-        # --- 2. 오늘 생산량 제언 리포트 ---
+        # --- 1. 기초 데이터 생성 ---
         report_data = []
-        
-        # 향후 N주간의 예상 수요 집계
         future_start_date = today
         future_end_date = today + timedelta(weeks=SAFETY_STOCK_WEEKS)
         future_demand_period = demand_forecast[demand_forecast['date'].between(future_start_date, future_end_date)]
         demand_by_item = future_demand_period.groupby(self.item_col)['predicted_demand'].sum()
         
-        # 모든 품목에 대해 리포트 데이터 생성
         all_items = set(self.current_inventory.keys()) | set(demand_by_item.index)
 
         for item in sorted(list(all_items)):
             current_stock_qty = sum(q for q, d in self.current_inventory.get(item, []))
             forecasted_demand = demand_by_item.get(item, 0)
             
-            # 유기산 리스크 지수 (평균 재고 보유 기간)
             stock_batches = self.current_inventory.get(item, [])
             avg_age = 0
             if current_stock_qty > 0:
                 weighted_age_sum = sum((today - prod_date).days * qty for qty, prod_date in stock_batches)
                 avg_age = weighted_age_sum / current_stock_qty
             
-            # 경쟁 지역 여부에 따라 안전 재고 조정
             is_competitive_item = self.historical_data[self.historical_data[self.item_col] == item][self.province_col].isin(self.competitive_regions).any()
             safety_stock_multiplier = 0.8 if is_competitive_item else 1.0
             
@@ -280,44 +258,78 @@ class InventoryOptimizerV4:
             production_suggestion = max(0, recommended_stock - current_stock_qty)
             
             report_data.append({
-                "품목": item,
-                "예상 수요(4주)": forecasted_demand,
-                "권장 재고": recommended_stock,
-                "현재 재고": current_stock_qty,
-                "생산 제언": production_suggestion,
-                "리스크 지수(일)": avg_age
+                "품목": item, "예상 수요(4주)": forecasted_demand, "권장 재고": recommended_stock,
+                "현재 재고": current_stock_qty, "생산 제언": production_suggestion, "리스크 지수(일)": avg_age,
             })
+        report_df = pd.DataFrame(report_data)
 
-        # --- 최종 리포트 출력 ---
-        print("\n" + "="*60)
+        # --- 2. 최종 리포트 출력 ---
+        print("\n" + "="*70)
         print(f" (주)성화 재고 최적화 리포트 (기준일: {today.strftime('%Y-%m-%d')})")
-        print("="*60)
-        
-        print("\n[ 품목별 재고 신선도 경고 ]")
-        if freshness_warnings:
-            for warning in freshness_warnings:
-                print(warning)
-            print(f"\n  >> 총 재가공 비용 리스크: {expired_risk_cost:,.0f}원")
-        else:
-            print("  - 현재 유통기한 만료 또는 임박 재고 없음.")
-            
-        print("\n[ 생산 및 재고 관리 제안 (생산 필요 품목) ]")
-        if report_data:
-            report_df = pd.DataFrame(report_data)
-            production_needed_df = report_df[report_df['생산 제언'] > 0].copy()
-            
-            if not production_needed_df.empty:
-                # 보기 좋게 포맷팅
-                for col in ["예상 수요(4주)", "권장 재고", "현재 재고", "생산 제언"]:
-                    production_needed_df[col] = production_needed_df[col].map('{:,.0f}'.format)
-                production_needed_df["리스크 지수(일)"] = production_needed_df["리스크 지수(일)"].map('{:.1f}'.format)
+        print("="*70)
+
+        # 2-1. 지역별 특이사항
+        print("\n[ 지역별 특이사항 (대리점 요청 적용) ]")
+        if agency_request_multiplier:
+            for region, multiplier in agency_request_multiplier.items():
+                last_year_start = future_start_date.replace(year=future_start_date.year - 1)
+                last_year_end = future_end_date.replace(year=future_end_date.year - 1)
                 
-                print(production_needed_df.to_string(index=False))
-            else:
-                print("  - 현재 모든 품목의 재고가 충분하여 추가 생산이 필요한 항목은 없습니다.")
+                demand_this_year = future_demand_period[future_demand_period[self.province_col] == region]['predicted_demand'].sum()
+                demand_last_year = self.historical_data[
+                    (self.historical_data['date'].between(last_year_start, last_year_end)) &
+                    (self.historical_data[self.province_col] == region)
+                ][self.qty_col].sum()
+                
+                if demand_last_year > 0:
+                    change_pct = (demand_this_year - demand_last_year) / demand_last_year * 100
+                    print(f"  - {region}: 향후 4주 수요 {demand_this_year:,.0f}개, 작년 동기 대비 {change_pct:+.1f}% (가중치 {multiplier} 적용됨)")
+                else:
+                    print(f"  - {region}: 향후 4주 수요 {demand_this_year:,.0f}개 (작년 동기 데이터 없음)")
         else:
-            print("  - 분석할 재고 데이터가 없습니다.")
-        print("="*60)
+            print("  - 대리점 요청 등 특별 가중치 미적용.")
+
+        # 2-2. 봄 시즌 핵심 품목 관리
+        print("\n[ 봄 시즌(3-5월) 핵심 품목 Top 10 생산 계획 ]")
+        spring_demand = demand_forecast[demand_forecast['date'].dt.month.isin([3, 4, 5])]
+        spring_demand_by_item = spring_demand.groupby(self.item_col)['predicted_demand'].sum()
+        top_10_spring_items = spring_demand_by_item.nlargest(10).index
+        
+        top_10_df = report_df[report_df['품목'].isin(top_10_spring_items)].copy()
+        top_10_df = top_10_df.sort_values("생산 제언", ascending=False)
+
+        if not top_10_df.empty:
+            for col in ["예상 수요(4주)", "권장 재고", "생산 제언"]:
+                top_10_df[col] = top_10_df[col].map('{:,.0f}'.format)
+            print(top_10_df[['품목', '예상 수요(4주)', '권장 재고', '생산 제언']].to_string(index=False))
+        else:
+            print("  - 봄 시즌 핵심 품목 정보를 계산할 수 없습니다.")
+        
+        # 2-3. 재고 과잉 경고
+        print("\n[ !!재고 과잉 경고 (유기산 리스크)!! ]")
+        overstock_df = report_df[(report_df['리스크 지수(일)'] > 90) & (report_df['현재 재고'] > 0)].copy()
+        overstock_df = overstock_df.sort_values("리스크 지수(일)", ascending=False)
+
+        if not overstock_df.empty:
+            print("  - 아래 품목들은 평균 보유 기간이 90일을 초과하여 우선 출하 또는 재가공 검토가 필요합니다.")
+            overstock_df["리스크 지수(일)"] = overstock_df["리스크 지수(일)"].map('{:.1f}일'.format)
+            print(overstock_df[['품목', '현재 재고', '리스크 지수(일)']].to_string(index=False))
+        else:
+            print("  - 현재 재고 과잉으로 판단되는 품목이 없습니다.")
+
+        print("\n[ 전체 품목 생산 제언 (필요량 많은 순) ]")
+        production_needed_df = report_df[report_df['생산 제언'] > 0].copy()
+        production_needed_df = production_needed_df.sort_values('생산 제언', ascending=False)
+        
+        if not production_needed_df.empty:
+            for col in ["예상 수요(4주)", "권장 재고", "현재 재고", "생산 제언"]:
+                production_needed_df[col] = production_needed_df[col].map('{:,.0f}'.format)
+            production_needed_df["리스크 지수(일)"] = production_needed_df["리스크 지수(일)"].map('{:.1f}'.format)
+            print(production_needed_df.to_string(index=False))
+        else:
+            print("  - 현재 모든 품목의 재고가 충분하여 추가 생산이 필요한 항목은 없습니다.")
+            
+        print("="*70)
 
 
 if __name__ == "__main__":
@@ -326,11 +338,11 @@ if __name__ == "__main__":
     # 시뮬레이션 실행 (대리점 긴급 요청 가중치 예시)
     # 실제 운영 시에는 이 값을 GUI나 설정 파일에서 받아올 수 있습니다.
     emergency_requests = {
-        '경기': 1.2, # 경기도 20% 추가 요청
+        '충남': 1.2, # 충남 20% 추가 요청
         '전남': 1.1  # 전남 10% 추가 요청
     }
     
     future_demand = optimizer.predict_demand(agency_request_multiplier=emergency_requests)
     
     # 시뮬레이션 결과 기반 리포트 생성
-    optimizer.run_simulation(future_demand)
+    optimizer.run_simulation(future_demand, agency_request_multiplier=emergency_requests)
