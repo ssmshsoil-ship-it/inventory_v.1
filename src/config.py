@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -39,7 +40,7 @@ WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 
 # API 키 확인 및 검증
 if WEATHER_API_KEY and len(WEATHER_API_KEY) > 10:
-    print(f"✓ [Gemini] API Key Successfully Loaded: {WEATHER_API_KEY[:4]}****")
+    print(f"[OK] [Gemini] API Key Successfully Loaded: {WEATHER_API_KEY[:4]}****")
 else:
     print(f"❌ API 키를 찾을 수 없거나 유효하지 않습니다!")
     print(f"\n해결 방법:")
