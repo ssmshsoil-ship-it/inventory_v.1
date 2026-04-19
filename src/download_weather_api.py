@@ -33,7 +33,11 @@ FAILED_LOG_FILE = Path("failed_log.txt")
 
 # API 정보
 API_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
-STATIONS = 'ALL'  # 전국 모든 지점
+# (주)성화 관련 주요 지역: 수원(119), 춘천(101), 청주(131), 대전(133), 전주(146), 광주(156), 대구(143), 부산(159) 등
+TARGET_STATIONS = [
+    119, 101, 131, 133, 146, 156, 143, 159, 184, 108, 112, 105, 136, 138, 152
+]
+STATIONS = ','.join(map(str, TARGET_STATIONS))
 ITEMS_PER_PAGE = 700 # 한 페이지에 가져올 데이터 수 (최대 999)
 # --- ---
 
@@ -111,7 +115,7 @@ def fetch_weather_data_for_period(start_date: str, end_date: str) -> list:
 
 
 def main():
-    """지정한 연도 범위의 기상 데이터를 월 단위로 수집하여 CSV로 저장합니다."""
+    """지정한 연도 범위의 기상 데이터를 일 단위로 수집하여 CSV로 저장합니다."""
     if not API_KEY:
         print("[오류] KMA_API_KEY 환경 변수가 설정되지 않았습니다.")
         print("스크립트를 실행하기 전에 API 키를 설정해주세요.")
@@ -126,8 +130,9 @@ def main():
         try:
             df_existing = pd.read_csv(OUTPUT_FILE)
             if 'date' in df_existing.columns and not df_existing.empty:
-                dates_collected = set(pd.to_datetime(df_existing['date']).dt.strftime('%Y-%m'))
-                print(f"[정보] 기존 파일에서 {len(dates_collected)}개월치 데이터를 확인했습니다. 이어받기를 시작합니다.")
+                # 일(day) 단위로 이미 수집된 날짜 확인
+                dates_collected = set(pd.to_datetime(df_existing['date']).dt.strftime('%Y-%m-%d'))
+                print(f"[정보] 기존 파일에서 {len(dates_collected)}개 날짜의 데이터를 확인했습니다. 이어받기를 시작합니다.")
         except Exception as e:
             print(f"[경고] 기존 데이터 파일({OUTPUT_FILE})을 읽는 중 오류 발생: {e}. 새로 시작합니다.")
     
@@ -139,64 +144,59 @@ def main():
                 if len(parts) >= 6:
                     start_dt_str = parts[-3]
                     try:
-                        # YYYYMMDD to YYYY-MM
-                        dates_to_retry.add(datetime.strptime(start_dt_str, '%Y%m%d').strftime('%Y-%m'))
+                        # YYYYMMDD to YYYY-MM-DD
+                        dates_to_retry.add(datetime.strptime(start_dt_str, '%Y%m%d').strftime('%Y-%m-%d'))
                     except ValueError:
                         continue
         if dates_to_retry:
-            print(f"[정보] 실패 로그에서 {len(dates_to_retry)}개월치 재시도 요청을 확인했습니다: {sorted(list(dates_to_retry))}")
+            print(f"[정보] 실패 로그에서 {len(dates_to_retry)}개 날짜의 재시도 요청을 확인했습니다.")
             # 재시도 후 로그 파일 초기화
             open(FAILED_LOG_FILE, 'w').close()
             print("  [OK] 실패 로그 파일을 초기화했습니다.")
 
-    # --- 월별 데이터 수집 및 실시간 저장 ---
+    # --- 일별 데이터 수집 및 실시간 저장 ---
     print(f"\n기상 데이터 수집을 시작합니다 ({START_YEAR}년 ~ {END_YEAR}년)")
     new_data_collected = False
-    for year in range(START_YEAR, END_YEAR + 1):
-        for month in range(1, 13):
-            month_str = f"{year}-{month:02d}"
-            
-            # 이미 수집되었고 재시도 목록에 없으면 건너뛰기
-            if month_str in dates_collected and month_str not in dates_to_retry:
-                continue
+    
+    date_range = pd.date_range(start=f'{START_YEAR}-01-01', end=f'{END_YEAR}-12-31', freq='D')
+    
+    for current_date in date_range:
+        date_str_dashed = current_date.strftime('%Y-%m-%d')
+        date_str_nodash = current_date.strftime('%Y%m%d')
 
-            start_of_month = datetime(year, month, 1)
-            if month == 12:
-                end_of_month = datetime(year, 12, 31)
-            else:
-                end_of_month = datetime(year, month + 1, 1) - pd.Timedelta(days=1)
+        # 이미 수집되었고 재시도 목록에 없으면 건너뛰기
+        if date_str_dashed in dates_collected and date_str_dashed not in dates_to_retry:
+            continue
 
-            start_str = start_of_month.strftime('%Y%m%d')
-            end_str = end_of_month.strftime('%Y%m%d')
+        print(f"- {date_str_dashed} 데이터 수집 중...")
+        daily_data = fetch_weather_data_for_period(date_str_nodash, date_str_nodash)
+        
+        # 실패 또는 데이터 없음: 로그는 fetch 함수가 남기므로 여기선 그냥 넘어감
+        if not daily_data:
+            print(f"  [정보] 해당 날짜에 수집된 데이터가 없거나, 최대 재시도 실패로 건너뜁니다.")
+            continue
 
-            print(f"- {year}년 {month}월 데이터 수집 중... ({start_str} ~ {end_str})")
-            monthly_data = fetch_weather_data_for_period(start_str, end_str)
-            
-            if not monthly_data:
-                print(f"  [정보] 해당 기간에 수집된 데이터가 없습니다.")
-                continue
+        # --- 데이터 처리 및 파일에 추가 ---
+        new_data_collected = True
+        df_day = pd.DataFrame(daily_data)
+        
+        required_cols = ['stnId', 'tm', 'avgTa', 'minTa', 'maxTa', 'sumRn']
+        df_day = df_day[[col for col in required_cols if col in df_day.columns]]
+        df_day = df_day.rename(columns={'stnId': 'stn_id', 'tm': 'date'})
+        
+        df_day['date'] = pd.to_datetime(df_day['date']).dt.strftime('%Y-%m-%d')
+        numeric_cols = ['stn_id', 'avgTa', 'minTa', 'maxTa', 'sumRn']
+        for col in numeric_cols:
+            if col in df_day.columns:
+                df_day[col] = pd.to_numeric(df_day[col], errors='coerce')
 
-            # --- 데이터 처리 및 파일에 추가 ---
-            new_data_collected = True
-            df_month = pd.DataFrame(monthly_data)
-            
-            required_cols = ['stnId', 'tm', 'avgTa', 'minTa', 'maxTa', 'sumRn']
-            df_month = df_month[[col for col in required_cols if col in df_month.columns]]
-            df_month = df_month.rename(columns={'stnId': 'stn_id', 'tm': 'date'})
-            
-            df_month['date'] = pd.to_datetime(df_month['date']).dt.strftime('%Y-%m-%d')
-            numeric_cols = ['stn_id', 'avgTa', 'minTa', 'maxTa', 'sumRn']
-            for col in numeric_cols:
-                if col in df_month.columns:
-                    df_month[col] = pd.to_numeric(df_month[col], errors='coerce')
+        if 'sumRn' in df_day.columns:
+            df_day['sumRn'] = df_day['sumRn'].fillna(0)
 
-            if 'sumRn' in df_month.columns:
-                df_month['sumRn'] = df_month['sumRn'].fillna(0)
-
-            # 파일이 없으면 헤더를 쓰고, 있으면 헤더 없이 데이터만 추가
-            header = not OUTPUT_FILE.exists()
-            df_month.to_csv(OUTPUT_FILE, mode='a', header=header, index=False, encoding='utf-8-sig')
-            print(f"  [OK] {len(df_month)}건의 데이터를 파일에 저장했습니다: {OUTPUT_FILE}")
+        # 파일이 없거나 비어있으면 헤더를 쓰고, 있으면 헤더 없이 데이터만 추가
+        header = not OUTPUT_FILE.exists() or os.path.getsize(OUTPUT_FILE) == 0
+        df_day.to_csv(OUTPUT_FILE, mode='a', header=header, index=False, encoding='utf-8-sig')
+        print(f"  [OK] {len(df_day)}건의 데이터를 파일에 저장했습니다: {OUTPUT_FILE}")
 
     # --- 최종 정리 (중복 제거 및 정렬) ---
     if not new_data_collected and not dates_to_retry:
