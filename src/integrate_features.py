@@ -75,6 +75,13 @@ def integrate_and_engineer_features():
     removed_rows = original_rows - len(sales_df)
     if removed_rows > 0:
         print(f"  [경고] 유효하지 않은 날짜 형식으로 인해 {removed_rows}개 행을 제거했습니다.")
+
+    # 기상 데이터가 확보된 2023~2026년 데이터만 사용하도록 필터링
+    original_rows = len(sales_df)
+    sales_df = sales_df[sales_df['date'].dt.year.between(2023, 2026)].copy()
+    filtered_rows = original_rows - len(sales_df)
+    if filtered_rows > 0:
+        print(f"  [OK] 기상 데이터가 없는 기간(2019-2022)의 데이터 {filtered_rows}건을 학습에서 제외합니다.")
         
     sales_df['date'] = sales_df['date'].dt.normalize()
     # 매핑 테이블을 이용해 'stn_id' (기상 관측소 ID) 컬럼 추가
@@ -112,6 +119,17 @@ def integrate_and_engineer_features():
         # 4. 판매 데이터와 기상 데이터 결합
         final_df = pd.merge(sales_df, weather_df, on=['date', 'stn_id'], how='left')
         print("\n- 4. 판매 + 기상 데이터 결합 완료")
+
+        # 기상 데이터 결합률 확인
+        nan_count = final_df['avg_temp'].isna().sum()
+        total_count = len(final_df)
+        if total_count > 0:
+            nan_rate = (nan_count / total_count) * 100
+            merge_rate = 100 - nan_rate
+            print(f"  [확인] 기상 데이터 누락 행: {nan_count}건 / {total_count}건 ({nan_rate:.2f}%)")
+            print(f"  [확인] 기상 데이터 결합률: {merge_rate:.2f}%")
+            if merge_rate < 95:
+                print("  [경고] 기상 데이터 결합률이 95% 미만입니다. 고객-지역 매핑 또는 기상 데이터 자체를 점검해야 합니다.")
 
     # 5. 특성 공학
     print("\n- 5. 특성 공학(Feature Engineering) 시작")
