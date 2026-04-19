@@ -16,26 +16,40 @@ print(f"1. .env 파일 경로: {ENV_FILE_PATH}")
 print(f"2. .env 파일 존재 여부: {os.path.exists(ENV_FILE_PATH)}")
 
 if os.path.exists(ENV_FILE_PATH):
-    # .env 파일 내용 확인 (키 값은 숨김)
-    print(f"3. .env 파일 내용 확인 중...")
+    # .env 파일을 직접 읽어서 BOM 제거 및 환경 변수 강제 등록
+    print(f"3. .env 파일 직접 파싱 중 (BOM 제거)...")
     try:
-        with open(ENV_FILE_PATH, 'r', encoding='utf-8') as f:
+        with open(ENV_FILE_PATH, 'r', encoding='utf-8-sig') as f:  # utf-8-sig로 BOM 자동 제거
             lines = f.readlines()
-            for line in lines:
-                if line.strip() and not line.strip().startswith('#'):
-                    if '=' in line:
-                        key = line.split('=')[0].strip()
-                        print(f"   - 발견된 키: {key}")
+            
+        for line in lines:
+            # 공백 및 BOM 제거
+            line = line.strip()
+            
+            # 주석이나 빈 줄 건너뛰기
+            if not line or line.startswith('#'):
+                continue
+            
+            # KEY=VALUE 형식 파싱
+            if '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                # 환경 변수에 강제 등록
+                os.environ[key] = value
+                print(f"   ✓ 환경 변수 등록: {key} = {value[:4]}****... (총 {len(value)}자)")
+                
     except Exception as e:
         print(f"   ⚠️  파일 읽기 오류: {e}")
     
-    # .env 파일 로드 (시스템 환경 변수보다 .env 파일 우선)
-    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True, verbose=True)
+    # load_dotenv도 실행 (이중 안전장치)
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True, verbose=False)
     print(f"4. ✓ load_dotenv(override=True) 실행 완료")
     
     # 로드 직후 환경 변수 확인
     loaded_key = os.getenv('WEATHER_API_KEY')
-    print(f"5. os.getenv('WEATHER_API_KEY') 결과:")
+    print(f"5. os.getenv('WEATHER_API_KEY') 최종 확인:")
     if loaded_key:
         print(f"   ✓ 키 로드 성공: {loaded_key[:4]}****... (총 {len(loaded_key)}자)")
     else:
