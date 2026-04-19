@@ -138,7 +138,7 @@ class InventoryOptimizerV4:
         future_df = pd.merge(future_df, combinations, on='_key').drop('_key', axis=1)
 
         # 4. 2026년 기상 데이터를 2027년에 매핑
-        last_year_weather = self.historical_data[self.historical_data['date'].dt.year == (SIMULATION_YEAR - 1)]
+        last_year_weather = self.historical_data[self.historical_data['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
         weather_cols = ['avg_temp', 'min_temp', 'max_temp', 'precip']
         
         # 날짜의 '월-일'을 키로 사용하여 매핑
@@ -180,7 +180,7 @@ class InventoryOptimizerV4:
                     future_df[col] = 0
 
         print(f"  [OK] {len(future_df)}건의 2027년 예측용 데이터 생성 완료.")
-        return future_df[features] # 모델에 필요한 피처만 반환
+        return future_df # 모델링에 필요한 모든 컬럼 반환
 
     def predict_demand(self, agency_request_multiplier: dict = None) -> pd.DataFrame:
         """
@@ -189,11 +189,13 @@ class InventoryOptimizerV4:
         Args:
             agency_request_multiplier (dict): {'지역명': 가중치} 형태. 예: {'경기': 1.2}
         """
-        features_2027 = self._prepare_future_features()
+        future_df = self._prepare_future_features()
         print("\n- 2027년 수요 예측 시작...")
         
-        predictions = self.model.predict(features_2027)
-        predicted_demand = features_2027.copy()
+        features_for_prediction = self.model.feature_names_
+        predictions = self.model.predict(future_df[features_for_prediction])
+        
+        predicted_demand = future_df.copy()
         predicted_demand['predicted_demand'] = np.maximum(0, predictions) # 예측값은 0 이상
 
         # 대리점 긴급 요청 가중치 적용
@@ -204,6 +206,7 @@ class InventoryOptimizerV4:
                 predicted_demand.loc[mask, 'predicted_demand'] *= multiplier
         
         # 일별, 지역별, 품목별 수요 집계
+        print(f"  [진단] Groupby 직전 컬럼: {predicted_demand.columns.tolist()}")
         daily_summary = predicted_demand.groupby(['date', self.province_col, self.item_col])['predicted_demand'].sum().reset_index()
         print("  [OK] 일별/지역별/품목별 수요 예측 완료.")
         return daily_summary
@@ -256,6 +259,13 @@ class InventoryOptimizerV4:
         for item, current_stock_qty in {k: sum(q for q, d in v) for k, v in self.current_inventory.items()}.items():
             target_stock = demand_by_item.get(item, 0)
             
+            # 재고 리스크(평균 보유 기간) 계산
+            stock_batches = self.current_inventory.get(item, [])
+            avg_age = 0
+            if current_stock_qty > 0:
+                weighted_age_sum = sum((today - prod_date).days * qty for qty, prod_date in stock_batches)
+                avg_age = weighted_age_sum / current_stock_qty
+
             # 경쟁 심화 지역의 주력 품목은 안전 재고를 더 타이트하게 관리
             # (이 로직은 더 정교화될 수 있습니다)
             is_competitive_item = self.historical_data[self.historical_data[self.item_col] == item][self.province_col].isin(self.competitive_regions).any()
@@ -264,7 +274,7 @@ class InventoryOptimizerV4:
             required_production = (target_stock * safety_stock_multiplier) - current_stock_qty
             
             if required_production > 0:
-                suggestion = f"  - 품목: {item}, 현재고: {current_stock_qty:,.0f}, 목표 재고: {target_stock:,.0f}, 제언량: {required_production:,.0f}"
+                suggestion = f"  - 품목: {item}, 현재고: {current_stock_qty:,.0f}, 목표 재고: {target_stock:,.0f}, 제언량: {required_production:,.0f} (리스크: 평균 {avg_age:.1f}일 보유)"
                 if is_competitive_item:
                     suggestion += " (경쟁 지역 주력 품목, 재고 타이트하게 관리)"
                 production_suggestions.append(suggestion)
