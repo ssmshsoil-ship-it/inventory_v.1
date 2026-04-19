@@ -6,7 +6,7 @@
 import math
 import pandas as pd
 from pathlib import Path
-from config import DATA_DIR, PROCESSED_DIR, MASTER_DB, WEATHER_DIR, RAW_WEATHER_DIR, TRAINING_DATA, SALES_DATA_DIR
+from config import DATA_DIR, PROCESSED_DIR, MASTER_DB, WEATHER_DIR, RAW_WEATHER_DIR, TRAINING_DATA, SALES_DATA_DIR, UNIQUE_CUSTOMERS_CSV
 
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -149,10 +149,54 @@ def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
     return final_df
 
 
-def analyze_region_data(sales_dir: Path):
+def map_region_from_customer_name(customer_name: str) -> str:
+    """
+    고객명(대리점명)에 포함된 키워드를 기반으로 지역을 매핑하는 함수 (초안).
+    
+    Args:
+        customer_name (str): 분석할 고객명
+    
+    Returns:
+        str: 매핑된 지역명. 매핑 규칙이 없으면 "미분류".
+    """
+    # 대리점명 키워드 -> 지역 매핑 (지속적으로 확장 필요)
+    mapping = {
+        '경기': ['경기', '수원', '화성', '이천', '평택', '안성'],
+        '강원': ['강원', '철원', '춘천', '원주'],
+        '충북': ['충북', '청주', '충주', '제천', '음성', '진천'],
+        '충남': ['충남', '대전', '천안', '공주', '논산', '당진', '서산'],
+        '전북': ['전북', '전주', '익산', '김제', '군산', '정읍'],
+        '전남': ['전남', '나주', '함평', '영암', '해남', '보성', '순천', '광주'],
+        '경북': ['경북', '대구', '상주', '안동', '의성', '구미', '경주'],
+        '경남': ['경남', '부산', '창원', '밀양', '진주', '함안', '합천'],
+        '제주': ['제주'],
+        # 농협은 전국 단위일 수 있어 별도/우선 처리 가능
+        '농협': ['농협', 'NH', '조합'],
+    }
+    
+    if not isinstance(customer_name, str):
+        return "미분류"
+        
+    # 우선순위가 높은 '농협' 먼저 체크
+    for keyword in mapping['농협']:
+        if keyword in customer_name:
+            return "농협"
+            
+    # 지역명 체크
+    for region, keywords in mapping.items():
+        if region == '농협':
+            continue
+        for keyword in keywords:
+            if keyword in customer_name:
+                return region
+
+    return "미분류"
+
+
+def analyze_region_data(sales_dir: Path, output_path: Path):
     """
     지정된 폴더의 모든 판매 데이터를 로드하여 '고객' 또는 '지역' 관련 컬럼의
-    고유값과 빈도수를 분석하고, 형식에 맞지 않는 데이터 수를 확인합니다.
+    고유값과 빈도수를 분석하고, 분석 결과를 CSV 파일로 저장합니다.
     """
     print(f"\n- 고객/지역 컬럼 데이터 분석 시작: {sales_dir}")
     
@@ -165,8 +209,9 @@ def analyze_region_data(sales_dir: Path):
     df_list = []
     for file in excel_files:
         try:
-            # 첫 번째 시트만 읽음
-            df = pd.read_excel(file)
+            # openpyxl 외에 xlrd 엔진도 지원하도록 처리
+            engine = 'openpyxl' if file.suffix == '.xlsx' else 'xlrd'
+            df = pd.read_excel(file, engine=engine)
             df_list.append(df)
             print(f"  [OK] 로드: {file.name} ({len(df)} 행)")
         except Exception as e:
@@ -197,34 +242,43 @@ def analyze_region_data(sales_dir: Path):
     # NaN 값 및 공백 처리
     cleaned_series = merged_df[target_col].fillna('N/A').astype(str).str.strip()
 
-    value_counts = cleaned_series.value_counts()
-    top_50 = value_counts.head(50)
+    # 빈도수 계산 및 DataFrame으로 변환
+    value_counts_df = cleaned_series.value_counts().reset_index()
+    value_counts_df.columns = ['고객명', '빈도수']
 
-    print(f"\n--- '{target_col}' 컬럼 상위 50개 고유값 및 빈도수 ---")
-    print(top_50)
+    # CSV 파일로 저장 (UTF-8 with BOM)
+    try:
+        value_counts_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        print(f"\n[OK] 분석 결과를 CSV 파일로 저장했습니다.")
+        print(f" -> 경로: {output_path}")
+    except Exception as e:
+        print(f"\n[오류] 분석 결과를 CSV 파일로 저장하는 중 오류가 발생했습니다: {e}")
+
+    # 터미널 출력용 상위 50개 데이터
+    top_50_df = value_counts_df.head(50)
+    print(f"\n--- '{target_col}' 컬럼 상위 50개 고유값 및 빈도수 (전체: {len(value_counts_df)}개) ---")
+    print(top_50_df.to_string())
 
     # 상위 50개 중 형식 ('지역명(임)')을 벗어난 데이터 분석
-    anomaly_count = 0
     anomalies = []
-    for value, count in top_50.items():
-        # 'N/A'는 분석에서 제외
-        if value == 'N/A':
+    for _, row in top_50_df.iterrows():
+        customer = row['고객명']
+        if customer == 'N/A':
             continue
-        # 문자열이 아니거나, '(임)'으로 끝나지 않으면 이상치로 간주
-        if not isinstance(value, str) or not value.endswith('(임)'):
-            anomaly_count += 1
-            anomalies.append(value)
+        if not isinstance(customer, str) or not customer.endswith('(임)'):
+            anomalies.append(customer)
 
     print("\n--- 상위 50개 데이터 형식 분석 결과 ---")
     print(f"분석 기준: '지역명(임)' 형식으로 끝나는가?")
-    print(f"형식을 벗어난 데이터 수: {anomaly_count} / {len(top_50)}")
+    print(f"형식을 벗어난 데이터 수: {len(anomalies)} / {len(top_50_df)}")
     
-    if anomaly_count > 0:
-        print("\n[참고] 형식을 벗어난 데이터 예시 (최대 10개):")
+    if anomalies:
+        print("\n[참고] 형식을 벗어난 데이터의 지역 매핑 결과 (초안):")
         for anom in anomalies[:10]:
-            print(f"- {anom}")
+            mapped_region = map_region_from_customer_name(anom)
+            print(f"- '{anom}' -> '{mapped_region}'")
     
-    print(f"\n분석 완료: 총 {len(value_counts)}개의 고유값이 발견되었습니다.")
+    print(f"\n분석 완료: 총 {len(value_counts_df)}개의 고유값이 발견되었습니다.")
 
 
 def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
@@ -370,4 +424,4 @@ def build(save=True) -> pd.DataFrame:
 
 if __name__ == "__main__":
     # build() # 기존 빌드 함수는 잠시 주석 처리
-    analyze_region_data(SALES_DATA_DIR)
+    analyze_region_data(SALES_DATA_DIR, UNIQUE_CUSTOMERS_CSV)

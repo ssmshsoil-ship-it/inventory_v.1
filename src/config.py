@@ -64,6 +64,7 @@ SALES_DATA_DIR = DATA_DIR / "2019-2026" # 2019-2026년 상세 판매 데이터
 # 처리된 데이터
 TRAINING_DATA = PROCESSED_DIR / "training_dataset_v1.csv"
 WEEKLY_WEATHER = PROCESSED_DIR / "weekly_weather.csv"
+UNIQUE_CUSTOMERS_CSV = PROCESSED_DIR / "unique_customers.csv"
 
 # 모델 타겟
 TARGETS = ["수도용_포", "원예용_포"]
