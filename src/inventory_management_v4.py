@@ -219,7 +219,7 @@ class InventoryOptimizerV4:
         initial_stock = (avg_weekly_demand * SAFETY_STOCK_WEEKS).to_dict()
         
         # 재고 신선도 추적을 위해 (수량, 생산일) 형태로 저장
-        today = datetime.now().date()
+        today = pd.to_datetime(datetime.now().date())
         inventory = {
             item: [(qty, today)] for item, qty in initial_stock.items()
         }
@@ -230,8 +230,8 @@ class InventoryOptimizerV4:
         """재고 시뮬레이션을 실행하고 일별 리포트를 생성합니다."""
         print("\n- 재고 시뮬레이션 및 리포트 생성 시작...")
         
-        # 오늘 날짜를 기준으로 리포트 생성
-        today = datetime.now().date()
+        # 오늘 날짜를 기준으로 리포트 생성 (Timestamp로 변환하여 타입 일치)
+        today = pd.to_datetime(datetime.now().date())
         
         # --- 1. 재고 신선도 경고 리포트 ---
         freshness_warnings = []
@@ -243,46 +243,55 @@ class InventoryOptimizerV4:
                 if age > SHELF_LIFE_DAYS:
                     # 유통기한 초과
                     risk_cost = qty * REPROCESSING_COST_PER_UNIT
-                    freshness_warnings.append(f"  - [만료] 품목: {item}, 수량: {qty}, 생산일: {production_date}, 비용 리스크: {risk_cost:,.0f}원")
+                    freshness_warnings.append(f"  - [만료] 품목: {item}, 수량: {qty}, 생산일: {production_date.strftime('%Y-%m-%d')}, 비용 리스크: {risk_cost:,.0f}원")
                     expired_risk_cost += risk_cost
                 elif age > SHELF_LIFE_DAYS - 30:
                     # 유통기한 임박 (30일 이내)
-                    freshness_warnings.append(f"  - [주의] 품목: {item}, 수량: {qty}, 생산일: {production_date}, 남은 기간: {SHELF_LIFE_DAYS - age}일")
+                    freshness_warnings.append(f"  - [주의] 품목: {item}, 수량: {qty}, 생산일: {production_date.strftime('%Y-%m-%d')}, 남은 기간: {SHELF_LIFE_DAYS - age}일")
 
         # --- 2. 오늘 생산량 제언 리포트 ---
-        production_suggestions = []
+        report_data = []
         
         # 향후 N주간의 예상 수요 집계
-        future_demand_period = demand_forecast[demand_forecast['date'].between(today, today + timedelta(weeks=SAFETY_STOCK_WEEKS))]
+        future_start_date = today
+        future_end_date = today + timedelta(weeks=SAFETY_STOCK_WEEKS)
+        future_demand_period = demand_forecast[demand_forecast['date'].between(future_start_date, future_end_date)]
         demand_by_item = future_demand_period.groupby(self.item_col)['predicted_demand'].sum()
         
-        for item, current_stock_qty in {k: sum(q for q, d in v) for k, v in self.current_inventory.items()}.items():
-            target_stock = demand_by_item.get(item, 0)
+        # 모든 품목에 대해 리포트 데이터 생성
+        all_items = set(self.current_inventory.keys()) | set(demand_by_item.index)
+
+        for item in sorted(list(all_items)):
+            current_stock_qty = sum(q for q, d in self.current_inventory.get(item, []))
+            forecasted_demand = demand_by_item.get(item, 0)
             
-            # 재고 리스크(평균 보유 기간) 계산
+            # 유기산 리스크 지수 (평균 재고 보유 기간)
             stock_batches = self.current_inventory.get(item, [])
             avg_age = 0
             if current_stock_qty > 0:
                 weighted_age_sum = sum((today - prod_date).days * qty for qty, prod_date in stock_batches)
                 avg_age = weighted_age_sum / current_stock_qty
-
-            # 경쟁 심화 지역의 주력 품목은 안전 재고를 더 타이트하게 관리
-            # (이 로직은 더 정교화될 수 있습니다)
+            
+            # 경쟁 지역 여부에 따라 안전 재고 조정
             is_competitive_item = self.historical_data[self.historical_data[self.item_col] == item][self.province_col].isin(self.competitive_regions).any()
-            
             safety_stock_multiplier = 0.8 if is_competitive_item else 1.0
-            required_production = (target_stock * safety_stock_multiplier) - current_stock_qty
             
-            if required_production > 0:
-                suggestion = f"  - 품목: {item}, 현재고: {current_stock_qty:,.0f}, 목표 재고: {target_stock:,.0f}, 제언량: {required_production:,.0f} (리스크: 평균 {avg_age:.1f}일 보유)"
-                if is_competitive_item:
-                    suggestion += " (경쟁 지역 주력 품목, 재고 타이트하게 관리)"
-                production_suggestions.append(suggestion)
+            recommended_stock = forecasted_demand * safety_stock_multiplier
+            production_suggestion = max(0, recommended_stock - current_stock_qty)
+            
+            report_data.append({
+                "품목": item,
+                "예상 수요(4주)": forecasted_demand,
+                "권장 재고": recommended_stock,
+                "현재 재고": current_stock_qty,
+                "생산 제언": production_suggestion,
+                "리스크 지수(일)": avg_age
+            })
 
         # --- 최종 리포트 출력 ---
-        print("\n" + "="*50)
-        print(f" (주)성화 재고 최적화 리포트 (기준일: {today})")
-        print("="*50)
+        print("\n" + "="*60)
+        print(f" (주)성화 재고 최적화 리포트 (기준일: {today.strftime('%Y-%m-%d')})")
+        print("="*60)
         
         print("\n[ 품목별 재고 신선도 경고 ]")
         if freshness_warnings:
@@ -292,13 +301,23 @@ class InventoryOptimizerV4:
         else:
             print("  - 현재 유통기한 만료 또는 임박 재고 없음.")
             
-        print("\n[ 오늘 생산량 제언 ]")
-        if production_suggestions:
-            for suggestion in production_suggestions:
-                print(suggestion)
+        print("\n[ 생산 및 재고 관리 제안 (생산 필요 품목) ]")
+        if report_data:
+            report_df = pd.DataFrame(report_data)
+            production_needed_df = report_df[report_df['생산 제언'] > 0].copy()
+            
+            if not production_needed_df.empty:
+                # 보기 좋게 포맷팅
+                for col in ["예상 수요(4주)", "권장 재고", "현재 재고", "생산 제언"]:
+                    production_needed_df[col] = production_needed_df[col].map('{:,.0f}'.format)
+                production_needed_df["리스크 지수(일)"] = production_needed_df["리스크 지수(일)"].map('{:.1f}'.format)
+                
+                print(production_needed_df.to_string(index=False))
+            else:
+                print("  - 현재 모든 품목의 재고가 충분하여 추가 생산이 필요한 항목은 없습니다.")
         else:
-            print("  - 현재 모든 품목의 재고가 충분하여 추가 생산 불필요.")
-        print("="*50)
+            print("  - 분석할 재고 데이터가 없습니다.")
+        print("="*60)
 
 
 if __name__ == "__main__":
