@@ -96,35 +96,60 @@ def integrate_and_engineer_features():
         final_df = sales_df.copy()
         # 특성 공학에서 사용할 컬럼들을 NaN으로 추가
         final_df['avg_temp'] = np.nan
-        final_df['rain_sum'] = np.nan
+        final_df['precip'] = np.nan
         print("\n- 4. 판매 + 기상 데이터 결합 완료 (기상 데이터 없음)")
     else:
         # merge를 위해 날짜 형식 통일
         weather_df['date'] = pd.to_datetime(weather_df['date']).dt.normalize()
         
         # 표준 영문 컬럼명으로 유연하게 변경하고 필요한 컬럼만 선택
-        weather_rename_map = {
-            '평균기온(°C)': 'avg_temp',
-            '평균 기온': 'avg_temp',
-            '일강수량(mm)': 'rain_sum',
-            '강수량': 'rain_sum',
-        }
-        weather_df.rename(columns=weather_rename_map, inplace=True)
+        rename_map = {}
+        for col in weather_df.columns:
+            # 컬럼명을 소문자로 바꿔서 비교
+            lower_col = col.lower()
+            if '평균기온' in col or '기온' in col or 'temp' in lower_col:
+                rename_map[col] = 'avg_temp'
+            if '강수량' in col or 'rain' in lower_col:
+                rename_map[col] = 'precip'
+
+        weather_df.rename(columns=rename_map, inplace=True)
+        if rename_map:
+            print(f"  [OK] 기상 데이터 컬럼명 표준화 완료. 변경사항: {rename_map}")
         
-        required_cols = ['date', 'stn_id', 'avg_temp', 'rain_sum']
+        required_cols = ['date', 'stn_id', 'avg_temp', 'precip']
         # 존재하는 컬럼만 선택
         weather_df = weather_df[[col for col in required_cols if col in weather_df.columns]]
         print("\n- 3. 일별 기상 데이터 로드 및 정제 완료")
 
         # 4. 판매 데이터와 기상 데이터 결합
+        print("\n- 4. 판매 + 기상 데이터 결합 준비...")
+        print("  - sales_df 키 (상위 5개):")
+        print(sales_df[['date', 'stn_id']].head().to_string())
+        print(f"  - sales_df key dtypes: date({sales_df['date'].dtype}), stn_id({sales_df['stn_id'].dtype})")
+        
+        if 'stn_id' in weather_df.columns and 'date' in weather_df.columns:
+            print("  - weather_df 키 (상위 5개):")
+            print(weather_df[['date', 'stn_id']].head().to_string())
+            print(f"  - weather_df key dtypes: date({weather_df['date'].dtype}), stn_id({weather_df['stn_id'].dtype})")
+        else:
+            print(f"  - [경고] weather_df에 조인 키가 부족합니다. 현재 컬럼: {weather_df.columns.tolist()}")
+
         final_df = pd.merge(sales_df, weather_df, on=['date', 'stn_id'], how='left')
+
+        # 결합 성공 여부 확인
+        if 'avg_temp' in final_df.columns:
+            merged_with_weather = final_df['avg_temp'].notna().sum()
+            if merged_with_weather > 0:
+                print(f"  [OK] 총 {len(final_df)}개 판매 데이터 중 {merged_with_weather}건에 기상 데이터가 결합되었습니다.")
+            else:
+                print(f"  [경고] 기상 데이터가 결합되지 않았습니다. 날짜 또는 stn_id가 일치하지 않을 수 있습니다.")
+        else:
+            print("  [경고] 기상 데이터 결합 후 'avg_temp' 컬럼이 생성되지 않았습니다. merge 로직이나 컬럼명을 확인하세요.")
+
         print("\n- 4. 판매 + 기상 데이터 결합 완료")
 
         # 기상 데이터 결합률 확인
-        if 'avg_temp' not in final_df.columns:
-            print("  [오류] 'avg_temp' 컬럼이 없어 기상 데이터 결합률을 확인할 수 없습니다.")
-            print(f"  -> final_df에 있는 실제 컬럼명: {final_df.columns.tolist()}")
-        else:
+        if 'avg_temp' in final_df.columns:
             nan_count = final_df['avg_temp'].isna().sum()
             total_count = len(final_df)
             if total_count > 0:
@@ -134,6 +159,9 @@ def integrate_and_engineer_features():
                 print(f"  [확인] 기상 데이터 결합률: {merge_rate:.2f}%")
                 if merge_rate < 95:
                     print("  [경고] 기상 데이터 결합률이 95% 미만입니다. 고객-지역 매핑 또는 기상 데이터 자체를 점검해야 합니다.")
+        else:
+            print("  [오류] 'avg_temp' 컬럼이 없어 기상 데이터 결합률을 확인할 수 없습니다.")
+            print(f"  -> final_df에 있는 실제 컬럼명: {final_df.columns.tolist()}")
 
     # 5. 특성 공학
     print("\n- 5. 특성 공학(Feature Engineering) 시작")
@@ -143,14 +171,14 @@ def integrate_and_engineer_features():
     # 그룹별(지점별)로 계산해야 정확함
     if 'avg_temp' in final_df.columns:
         final_df['temp_change_weekly'] = final_df.groupby('stn_id')['avg_temp'].diff(7)
-    if 'rain_sum' in final_df.columns:
-        final_df['rain_sum_3d'] = final_df.groupby('stn_id')['rain_sum'].rolling(window=3).sum().reset_index(0,drop=True)
+    if 'precip' in final_df.columns:
+        final_df['precip_sum_3d'] = final_df.groupby('stn_id')['precip'].rolling(window=3).sum().reset_index(0,drop=True)
     
     final_df['is_peak_season'] = final_df['date'].dt.month.isin([3, 4]).astype(int)
     
     # 결측치 발생 가능 (rolling, diff 초기값) -> 0으로 채우기
     final_df.fillna({
-        'temp_change_weekly': 0, 'rain_sum_3d': 0
+        'temp_change_weekly': 0, 'precip_sum_3d': 0
     }, inplace=True)
     print("  [OK] 파생 변수 생성 완료: '전주 대비 기온 변화', '최근 3일 누적 강수량', '피크 시즌 여부'")
 
@@ -162,7 +190,7 @@ def integrate_and_engineer_features():
         print(f"  -> 최종 데이터: {final_df.shape[0]}행, {final_df.shape[1]}컬럼")
         
         # 출력할 컬럼이 존재하는지 확인하여 KeyError 방지
-        display_cols = ['date', '고객명', 'province', 'avg_temp', 'rain_sum_3d', 'is_peak_season']
+        display_cols = ['date', '고객명', 'province', 'avg_temp', 'precip', 'precip_sum_3d', 'is_peak_season']
         existing_display_cols = [col for col in display_cols if col in final_df.columns]
         print(f"  -> 결과 (일부 컬럼):\n{final_df[existing_display_cols].head().to_string()}")
     except Exception as e:
