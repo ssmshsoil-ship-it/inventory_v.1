@@ -39,6 +39,7 @@ class InventoryOptimizerV4:
         print("재고 관리 최적화 시뮬레이터 v4를 시작합니다.")
         self.model = self._load_model()
         self.historical_data = self._load_historical_data()
+        self._resolve_column_names() # 주요 컬럼명 동적 확인
         self.competitive_regions = self._analyze_competition()
         # 현재 재고 데이터는 별도 파일(예: current_inventory.csv)에서 로드해야 합니다.
         # 여기서는 시뮬레이션을 위해 가상의 초기 재고를 생성합니다.
@@ -62,6 +63,39 @@ class InventoryOptimizerV4:
         df['date'] = pd.to_datetime(df['date'])
         return df
 
+    def _resolve_column_names(self):
+        """historical_data에서 주요 컬럼명('품목', '출고수량' 등)을 동적으로 찾습니다."""
+        print("\n- 주요 데이터 컬럼명 확인...")
+        
+        # 품목 컬럼 찾기
+        item_candidates = ['품목', '품명']
+        for col in item_candidates:
+            if col in self.historical_data.columns:
+                self.item_col = col
+                break
+        else:
+            raise KeyError(f"품목/품명 컬럼을 찾을 수 없습니다. 사용 가능한 컬럼: {self.historical_data.columns.tolist()}")
+
+        # 출고수량 컬럼 찾기
+        qty_candidates = ['출고수량', '수량']
+        for col in qty_candidates:
+            if col in self.historical_data.columns:
+                self.qty_col = col
+                break
+        else:
+            raise KeyError(f"출고수량/수량 컬럼을 찾을 수 없습니다. 사용 가능한 컬럼: {self.historical_data.columns.tolist()}")
+        
+        # 지역(province) 컬럼 찾기
+        province_candidates = ['province', '지역']
+        for col in province_candidates:
+            if col in self.historical_data.columns:
+                self.province_col = col
+                break
+        else:
+            raise KeyError(f"province/지역 컬럼을 찾을 수 없습니다. 사용 가능한 컬럼: {self.historical_data.columns.tolist()}")
+        
+        print(f"  [OK] 품목 컬럼: '{self.item_col}', 수량 컬럼: '{self.qty_col}', 지역 컬럼: '{self.province_col}'")
+
     def _analyze_competition(self) -> list:
         """
         과거 8년 데이터(가용 데이터 기준)에서 지역별 출고량의 변동폭을 분석하여
@@ -70,10 +104,10 @@ class InventoryOptimizerV4:
         print("\n- 경쟁 심화 지역 분석 시작...")
         # 'province'와 'week'를 기준으로 주별 출고수량 집계
         # 여기서는 가용 데이터 전체를 사용합니다.
-        weekly_sales = self.historical_data.groupby(['province', pd.Grouper(key='date', freq='W-MON')])['출고수량'].sum().reset_index()
+        weekly_sales = self.historical_data.groupby([self.province_col, pd.Grouper(key='date', freq='W-MON')])[self.qty_col].sum().reset_index()
         
         # 지역별 출고량 표준편차 계산
-        volatility = weekly_sales.groupby('province')['출고수량'].std().sort_values(ascending=False)
+        volatility = weekly_sales.groupby(self.province_col)[self.qty_col].std().sort_values(ascending=False)
         
         # 변동성이 상위 25% 이상인 지역을 '경쟁 심화 지역'으로 분류
         threshold = volatility.quantile(0.75)
@@ -94,7 +128,7 @@ class InventoryOptimizerV4:
         
         # 2. 과거 데이터에서 지역/품목 등 조합 추출
         # 예측에 필요한 모든 범주형 조합을 가져옵니다.
-        categorical_cols = ['고객명', '품목', 'province', 'stn_id']
+        categorical_cols = ['고객명', self.item_col, self.province_col, 'stn_id']
         combinations = self.historical_data[categorical_cols].drop_duplicates().dropna()
         
         # 3. 날짜와 조합을 기준으로 2027년 데이터프레임 생성
@@ -166,11 +200,11 @@ class InventoryOptimizerV4:
         if agency_request_multiplier:
             print(f"  [시뮬레이션] 대리점 긴급 요청 가중치 적용: {agency_request_multiplier}")
             for region, multiplier in agency_request_multiplier.items():
-                mask = (predicted_demand['province'] == region)
+                mask = (predicted_demand[self.province_col] == region)
                 predicted_demand.loc[mask, 'predicted_demand'] *= multiplier
         
         # 일별, 지역별, 품목별 수요 집계
-        daily_summary = predicted_demand.groupby(['date', 'province', '품목'])['predicted_demand'].sum().reset_index()
+        daily_summary = predicted_demand.groupby(['date', self.province_col, self.item_col])['predicted_demand'].sum().reset_index()
         print("  [OK] 일별/지역별/품목별 수요 예측 완료.")
         return daily_summary
 
@@ -178,7 +212,7 @@ class InventoryOptimizerV4:
         """초기 재고 상태를 가상으로 생성합니다."""
         # 실제로는 DB나 ERP에서 현재 재고 데이터를 가져와야 합니다.
         # 품목별로 4주치 평균 수요를 초기 재고로 가정합니다.
-        avg_weekly_demand = self.historical_data.groupby('품목')['출고수량'].sum() / self.historical_data['date'].dt.to_period('W').nunique()
+        avg_weekly_demand = self.historical_data.groupby(self.item_col)[self.qty_col].sum() / self.historical_data['date'].dt.to_period('W').nunique()
         initial_stock = (avg_weekly_demand * SAFETY_STOCK_WEEKS).to_dict()
         
         # 재고 신선도 추적을 위해 (수량, 생산일) 형태로 저장
@@ -217,14 +251,14 @@ class InventoryOptimizerV4:
         
         # 향후 N주간의 예상 수요 집계
         future_demand_period = demand_forecast[demand_forecast['date'].between(today, today + timedelta(weeks=SAFETY_STOCK_WEEKS))]
-        demand_by_item = future_demand_period.groupby('품목')['predicted_demand'].sum()
+        demand_by_item = future_demand_period.groupby(self.item_col)['predicted_demand'].sum()
         
         for item, current_stock_qty in {k: sum(q for q, d in v) for k, v in self.current_inventory.items()}.items():
             target_stock = demand_by_item.get(item, 0)
             
             # 경쟁 심화 지역의 주력 품목은 안전 재고를 더 타이트하게 관리
             # (이 로직은 더 정교화될 수 있습니다)
-            is_competitive_item = self.historical_data[self.historical_data['품목'] == item]['province'].isin(self.competitive_regions).any()
+            is_competitive_item = self.historical_data[self.historical_data[self.item_col] == item][self.province_col].isin(self.competitive_regions).any()
             
             safety_stock_multiplier = 0.8 if is_competitive_item else 1.0
             required_production = (target_stock * safety_stock_multiplier) - current_stock_qty
