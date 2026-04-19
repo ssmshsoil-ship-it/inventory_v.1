@@ -188,6 +188,12 @@ def main():
             })
         report_df = pd.DataFrame(report_data)
 
+        # 수치형 컬럼들의 타입을 강제로 통일하여 포맷팅 오류 방지
+        numeric_cols = ["예상 수요(4주)", "권장 재고", "현재 재고", "생산 제언", "리스크 지수(일)"]
+        for col in numeric_cols:
+            if col in report_df.columns:
+                report_df[col] = pd.to_numeric(report_df[col], errors='coerce').fillna(0)
+
     # --- 대시보드 출력 ---
     st.header(f"📇 재고 최적화 리포트 (기준일: {today.strftime('%Y-%m-%d')})")
     
@@ -200,10 +206,14 @@ def main():
                     last_year_start = future_start_date.replace(year=future_start_date.year - 1)
                     last_year_end = future_end_date.replace(year=future_end_date.year - 1)
                     demand_this_year = future_demand_period[future_demand_period[province_col] == region]['predicted_demand'].sum()
+                    
+                    if demand_this_year > 1_000_000:
+                        st.warning(f"{region}의 4주 예측 수요({demand_this_year:,.0f}개)가 100만 개를 초과하여 비정상적으로 보입니다.")
+                    
                     demand_last_year = historical_data[(historical_data['date'].between(last_year_start, last_year_end)) & (historical_data[province_col] == region)][qty_col].sum()
                     
-                    delta_text = "작년 데이터 없음"
-                    if pd.notna(demand_this_year) and pd.notna(demand_last_year) and demand_last_year > 0:
+                    delta_text = "-"
+                    if pd.notna(demand_this_year) and pd.notna(demand_last_year) and demand_last_year >= 100:
                         change_pct = (demand_this_year - demand_last_year) / demand_last_year * 100
                         delta_text = f"{change_pct:+.1f} %"
                         
@@ -223,11 +233,6 @@ def main():
     spring_demand_by_item = spring_demand.groupby(item_col)['predicted_demand'].sum()
     top_10_spring_items = spring_demand_by_item.nlargest(10).index
     top_10_df = report_df[report_df['품목'].isin(top_10_spring_items)].sort_values("생산 제언", ascending=False)
-    
-    # 포맷 에러 방지를 위해 숫자형으로 변환
-    numeric_cols = ['예상 수요(4주)', '권장 재고', '생산 제언']
-    for col in numeric_cols:
-        top_10_df[col] = pd.to_numeric(top_10_df[col], errors='coerce').fillna(0)
         
     st.dataframe(top_10_df[['품목', '예상 수요(4주)', '권장 재고', '생산 제언']].style.format(formatter='{:,.0f}', na_rep='-'), use_container_width=True)
 

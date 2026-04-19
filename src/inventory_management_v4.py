@@ -95,6 +95,8 @@ class InventoryOptimizerV4:
             raise KeyError(f"province/지역 컬럼을 찾을 수 없습니다. 사용 가능한 컬럼: {self.historical_data.columns.tolist()}")
         
         print(f"  [OK] 품목 컬럼: '{self.item_col}', 수량 컬럼: '{self.qty_col}', 지역 컬럼: '{self.province_col}'")
+        self.historical_data[self.qty_col] = pd.to_numeric(self.historical_data[self.qty_col], errors='coerce').fillna(0)
+        print(f"  [OK] '{self.qty_col}' 컬럼을 수치형으로 변환 완료.")
 
     def _analyze_competition(self) -> list:
         """
@@ -154,7 +156,14 @@ class InventoryOptimizerV4:
         # 기상 데이터는 지점(stn_id)별로 하루에 하나만 존재해야 함
         weather_to_map = last_year_weather[['stn_id', 'month_day'] + weather_cols].drop_duplicates(subset=['stn_id', 'month_day'])
         
+        len_before = len(future_df)
         future_df = pd.merge(future_df, weather_to_map, on=['stn_id', 'month_day'], how='left')
+        len_after = len(future_df)
+        print(f"  [로그] 기상 데이터 조인 전/후 행 수: {len_before} -> {len_after}")
+
+        if len_after > len_before:
+            future_df = future_df.drop_duplicates(subset=['date', self.province_col, self.item_col], keep='first')
+            print(f"  [로그] 중복 제거 후 행 수: {len(future_df)}")
         
         # 기상 데이터 결측치는 전/후 값으로 채움
         future_df[weather_cols] = future_df.groupby('stn_id')[weather_cols].transform(lambda x: x.ffill().bfill())
@@ -240,6 +249,10 @@ class InventoryOptimizerV4:
         # 일별, 지역별, 품목별 수요 집계
         print(f"  [진단] Groupby 직전 컬럼: {predicted_demand.columns.tolist()}")
         daily_summary = predicted_demand.groupby(['date', self.province_col, self.item_col])['predicted_demand'].sum().reset_index()
+
+        if (daily_summary['predicted_demand'] > clipping_upper_bound).any():
+            print(f"  [경고] 예측된 일일 수요가 과거 최대치의 2배({clipping_upper_bound:,.0f})를 초과하는 경우가 있습니다.")
+        
         print("  [OK] 일별/지역별/품목별 수요 예측 완료.")
         return daily_summary
 
