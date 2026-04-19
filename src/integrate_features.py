@@ -77,32 +77,47 @@ def integrate_and_engineer_features():
         print(f"  [경고] 유효하지 않은 날짜 형식으로 인해 {removed_rows}개 행을 제거했습니다.")
         
     sales_df['date'] = sales_df['date'].dt.normalize()
-    # 매핑 테이블을 이용해 '지점' (기상 관측소 ID) 컬럼 추가
-    sales_df['지점'] = sales_df['province'].map(PROVINCE_TO_STATION_MAP)
+    # 매핑 테이블을 이용해 'stn_id' (기상 관측소 ID) 컬럼 추가
+    sales_df['stn_id'] = sales_df['province'].map(PROVINCE_TO_STATION_MAP)
     print("  [OK] 판매 데이터에 기상 관측소 ID 매핑 완료.")
     
     # 3. 일별 기상 데이터 로드
     weather_df = merge_raw_weather_data(RAW_WEATHER_DIR)
-    # merge를 위해 날짜 형식 통일
-    weather_df['date'] = pd.to_datetime(weather_df['date']).dt.normalize()
-    # 필요한 기상 컬럼만 선택
-    weather_cols = ['date', '지점', '평균기온(°C)', '일강수량(mm)']
-    weather_df = weather_df[weather_cols].rename(columns={
-        '평균기온(°C)': 'avg_temp', '일강수량(mm)': 'rainfall'
-    })
-    print("\n- 3. 일별 기상 데이터 로드 완료")
+    
+    if weather_df.empty:
+        print("\n- 3. [경고] 기상 데이터 없이 판매 데이터만으로 일단 통합을 진행합니다.")
+        final_df = sales_df.copy()
+        # 특성 공학에서 사용할 컬럼들을 NaN으로 추가
+        final_df['avg_temp'] = np.nan
+        final_df['rainfall'] = np.nan
+        print("\n- 4. 판매 + 기상 데이터 결합 완료 (기상 데이터 없음)")
+    else:
+        # merge를 위해 날짜 형식 통일
+        weather_df['date'] = pd.to_datetime(weather_df['date']).dt.normalize()
+        
+        # 표준 컬럼명으로 변경하고 필요한 컬럼만 선택
+        weather_df = weather_df.rename(columns={
+            '평균기온(°C)': 'avg_temp', '일강수량(mm)': 'rainfall'
+        })
+        
+        required_cols = ['date', 'stn_id', 'avg_temp', 'rainfall']
+        weather_df = weather_df[[col for col in required_cols if col in weather_df.columns]]
+        print("\n- 3. 일별 기상 데이터 로드 완료")
 
-    # 4. 판매 데이터와 기상 데이터 결합
-    final_df = pd.merge(sales_df, weather_df, on=['date', '지점'], how='left')
-    print("\n- 4. 판매 + 기상 데이터 결합 완료")
+        # 4. 판매 데이터와 기상 데이터 결합
+        final_df = pd.merge(sales_df, weather_df, on=['date', 'stn_id'], how='left')
+        print("\n- 4. 판매 + 기상 데이터 결합 완료")
 
     # 5. 특성 공학
     print("\n- 5. 특성 공학(Feature Engineering) 시작")
-    final_df = final_df.sort_values(by=['지점', 'date']).reset_index(drop=True)
+    # stn_id 기준으로 정렬
+    final_df = final_df.sort_values(by=['stn_id', 'date']).reset_index(drop=True)
     
     # 그룹별(지점별)로 계산해야 정확함
-    final_df['temp_change_weekly'] = final_df.groupby('지점')['avg_temp'].diff(7)
-    final_df['rain_sum_3d'] = final_df.groupby('지점')['rainfall'].rolling(window=3).sum().reset_index(0,drop=True)
+    if 'avg_temp' in final_df.columns:
+        final_df['temp_change_weekly'] = final_df.groupby('stn_id')['avg_temp'].diff(7)
+    if 'rainfall' in final_df.columns:
+        final_df['rain_sum_3d'] = final_df.groupby('stn_id')['rainfall'].rolling(window=3).sum().reset_index(0,drop=True)
     
     final_df['is_peak_season'] = final_df['date'].dt.month.isin([3, 4]).astype(int)
     
