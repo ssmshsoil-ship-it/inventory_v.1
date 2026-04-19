@@ -56,6 +56,7 @@ else:
 # 원본 데이터
 MASTER_DB     = DATA_DIR / "master_db_v.0.xlsx"
 WEATHER_DIR   = DATA_DIR / "weather"
+RAW_WEATHER_DIR = DATA_DIR / "raw" / "weather"  # 원본 기상 데이터 폴더
 COST_FILE     = DATA_DIR / "cost.xls"
 
 # 처리된 데이터

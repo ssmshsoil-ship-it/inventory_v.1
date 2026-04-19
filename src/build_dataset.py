@@ -5,7 +5,7 @@
 import math
 import pandas as pd
 from pathlib import Path
-from config import DATA_DIR, PROCESSED_DIR, MASTER_DB, WEATHER_DIR, TRAINING_DATA
+from config import DATA_DIR, PROCESSED_DIR, MASTER_DB, WEATHER_DIR, RAW_WEATHER_DIR, TRAINING_DATA
 
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -60,6 +60,43 @@ def load_erp_historical(path: Path) -> pd.DataFrame:
     df["수도용_L"] = 0.0
     df["원예용_L"] = 0.0
     return df
+
+
+def merge_raw_weather_data(raw_weather_dir: Path) -> pd.DataFrame:
+    """
+    지정된 폴더의 모든 기상 데이터 CSV 파일을 하나의 DataFrame으로 병합합니다.
+    
+    Args:
+        raw_weather_dir (Path): 원본 CSV 파일들이 있는 폴더 경로
+    
+    Returns:
+        pd.DataFrame: 병합된 데이터프레임
+    """
+    print(f"\n- 원본 기상 데이터 병합 시작: {raw_weather_dir}")
+    
+    csv_files = sorted(list(raw_weather_dir.glob("*.csv")))
+    if not csv_files:
+        print(f"  ! 경고: '{raw_weather_dir}' 폴더에 병합할 CSV 파일이 없습니다.")
+        return pd.DataFrame()
+
+    df_list = []
+    for file in csv_files:
+        try:
+            # API로 수집한 데이터는 보통 utf-8이지만, 문제가 발생하면 'cp949' 시도
+            df = pd.read_csv(file)
+            df_list.append(df)
+            print(f"  ✓ 로드: {file.name} ({len(df)} 행)")
+        except Exception as e:
+            print(f"  ! 오류: {file.name} 파일 로드 실패 - {e}")
+
+    if not df_list:
+        print("  ! 경고: 성공적으로 로드된 데이터가 없습니다.")
+        return pd.DataFrame()
+    
+    merged_df = pd.concat(df_list, ignore_index=True)
+    print(f"  ✓ 병합 완료: 총 {len(merged_df)} 행")
+    
+    return merged_df
 
 
 def load_weekly_weather(weather_dir: Path) -> pd.DataFrame:
