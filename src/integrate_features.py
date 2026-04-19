@@ -107,8 +107,8 @@ def integrate_and_engineer_features():
         rename_map = {}
         for col in weather_df.columns:
             lower_col = col.lower()
-            # 기온 관련 컬럼명 표준화 (avg_temp)
-            if col in ['평균기온(°C)', '평균기온', '평균 기온'] or '기온' in col or 'temp' in lower_col:
+            # 기온 관련 컬럼명 표준화 (avg_temp) - '평균'과 '기온' 동시 포함 또는 'temp'/'ta' 포함
+            if ('평균' in col and '기온' in col) or 'temp' in lower_col or 'ta' in lower_col:
                 rename_map[col] = 'avg_temp'
             # 강수량 관련 컬럼명 표준화 (precip)
             elif '강수량' in col or 'rain' in lower_col:
@@ -117,6 +117,17 @@ def integrate_and_engineer_features():
         weather_df.rename(columns=rename_map, inplace=True)
         if rename_map:
             print(f"  [OK] 기상 데이터 컬럼명 표준화 완료. 변경사항: {rename_map}")
+
+        print(f"  [진단] 컬럼명 변경 후 weather_df 컬럼: {weather_df.columns.tolist()}")
+
+        # avg_temp 존재 여부 확인 및 타입 변환, 없으면 중단
+        if 'avg_temp' not in weather_df.columns:
+            print("\n[오류] 기상 데이터에서 'avg_temp'로 매핑할 기온 컬럼을 찾지 못했습니다.")
+            print(" -> 처리를 중단합니다. raw/weather/ 폴더의 CSV 파일 컬럼명을 확인하세요.")
+            return
+
+        weather_df['avg_temp'] = pd.to_numeric(weather_df['avg_temp'], errors='coerce')
+        print("  [OK] 'avg_temp' 컬럼을 안전하게 숫자형으로 변환했습니다.")
         
         required_cols = ['date', 'stn_id', 'avg_temp', 'precip']
         # 존재하는 컬럼만 선택
