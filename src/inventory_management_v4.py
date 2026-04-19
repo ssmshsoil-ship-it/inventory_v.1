@@ -126,16 +126,20 @@ class InventoryOptimizerV4:
         # 1. 2027년 날짜 범위 생성
         dates_2027 = pd.date_range(start=f'{SIMULATION_YEAR}-01-01', end=f'{SIMULATION_YEAR}-12-31', freq='D')
         
-        # 2. 과거 데이터에서 지역/품목 등 조합 추출
-        # 예측에 필요한 모든 범주형 조합을 가져옵니다.
-        categorical_cols = ['고객명', self.item_col, self.province_col, 'stn_id']
-        combinations = self.historical_data[categorical_cols].drop_duplicates().dropna()
+        # 2. 예측 단위(품목/지역/관측소) 조합 추출 (수량 뻥튀기 방지)
+        # '고객명'을 제외하여 중복 합산을 방지하고, 모델 입력을 위해 'dummy' 고객을 사용합니다.
+        print("  [OK] 수량 중복 합산을 방지를 위해 예측 단위를 품목/지역으로 요약합니다.")
+        base_cols = [self.item_col, self.province_col, 'stn_id']
+        combinations = self.historical_data[base_cols].drop_duplicates().dropna()
         
         # 3. 날짜와 조합을 기준으로 2027년 데이터프레임 생성
         future_df = pd.DataFrame(dates_2027, columns=['date'])
         future_df['_key'] = 1
         combinations['_key'] = 1
         future_df = pd.merge(future_df, combinations, on='_key').drop('_key', axis=1)
+        
+        # 모델이 '고객명' 피처를 사용하므로, 대표값으로 설정
+        future_df['고객명'] = 'dummy_customer'
 
         # 4. 2026년 기상 데이터를 2027년에 매핑
         last_year_weather = self.historical_data[self.historical_data['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
@@ -217,6 +221,12 @@ class InventoryOptimizerV4:
         else:
             predicted_demand = future_df.copy()
             predicted_demand['predicted_demand'] = np.maximum(0, predictions) # 예측값은 0 이상
+
+        # 예측값 상한선 설정 (단위 검증): 과거 일일 최대 출고량의 2배를 넘지 않도록 제한
+        max_daily_qty = self.historical_data.groupby(['date', self.item_col])[self.qty_col].sum().max()
+        clipping_upper_bound = max_daily_qty * 2
+        predicted_demand['predicted_demand'] = predicted_demand['predicted_demand'].clip(upper=clipping_upper_bound)
+        print(f"  [OK] 예측값 상한 적용: 일일 최대 {clipping_upper_bound:,.0f}개 (과거 최대치의 2배)")
 
         # 대리점 긴급 요청 가중치 적용
         if agency_request_multiplier:
@@ -315,11 +325,14 @@ class InventoryOptimizerV4:
                     (self.historical_data[self.province_col] == region)
                 ][self.qty_col].sum()
                 
-                if demand_last_year > 0:
-                    change_pct = (demand_this_year - demand_last_year) / demand_last_year * 100
-                    print(f"  - {region}: 향후 4주 수요 {demand_this_year:,.0f}개, 작년 동기 대비 {change_pct:+.1f}% (가중치 {multiplier} 적용됨)")
+                if pd.notna(demand_this_year) and pd.notna(demand_last_year):
+                    if demand_last_year > 0:
+                        change_pct = (demand_this_year - demand_last_year) / demand_last_year * 100
+                        print(f"  - {region}: 향후 4주 수요 {demand_this_year:,.0f}개, 작년 동기 대비 {change_pct:+.1f}% (가중치 {multiplier} 적용됨)")
+                    else:
+                        print(f"  - {region}: 향후 4주 수요 {demand_this_year:,.0f}개 (작년 동기 데이터 없음)")
                 else:
-                    print(f"  - {region}: 향후 4주 수요 {demand_this_year:,.0f}개 (작년 동기 데이터 없음)")
+                    print(f"  - {region}: 수요 데이터 부족으로 작년 동기 대비 계산 불가")
         else:
             print("  - 대리점 요청 등 특별 가중치 미적용.")
 

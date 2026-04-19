@@ -87,11 +87,17 @@ def initialize_inventory(_historical_data, item_col, qty_col):
 def prepare_future_features(_historical_data, _model, item_col, province_col):
     """2027년 예측용 피처 데이터프레임을 생성하고 캐시합니다."""
     dates_2027 = pd.date_range(start=f'{SIMULATION_YEAR}-01-01', end=f'{SIMULATION_YEAR}-12-31', freq='D')
-    categorical_cols = ['고객명', item_col, province_col, 'stn_id']
-    combinations = _historical_data[categorical_cols].drop_duplicates().dropna()
+    
+    # 예측 단위(품목/지역/관측소) 조합 추출 (수량 뻥튀기 방지)
+    base_cols = [item_col, province_col, 'stn_id']
+    combinations = _historical_data[base_cols].drop_duplicates().dropna()
+    
     future_df = pd.DataFrame(dates_2027, columns=['date'])
     future_df['_key'] = 1; combinations['_key'] = 1
     future_df = pd.merge(future_df, combinations, on='_key').drop('_key', axis=1)
+
+    # 모델이 '고객명' 피처를 사용하므로, 대표값으로 설정
+    future_df['고객명'] = 'dummy_customer'
 
     last_year_weather = _historical_data[_historical_data['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
     weather_cols = ['avg_temp', 'min_temp', 'max_temp', 'precip']
@@ -143,6 +149,11 @@ def main():
         predicted_demand = future_df_base.copy()
         predicted_demand['predicted_demand'] = np.maximum(0, predictions)
 
+        # 예측값 상한선 설정 (단위 검증)
+        max_daily_qty = historical_data.groupby(['date', item_col])[qty_col].sum().max()
+        clipping_upper_bound = max_daily_qty * 2
+        predicted_demand['predicted_demand'] = predicted_demand['predicted_demand'].clip(upper=clipping_upper_bound)
+
         for region, multiplier in agency_request_multiplier.items():
             if multiplier != 1.0:
                 mask = (predicted_demand[province_col] == region)
@@ -186,15 +197,20 @@ def main():
                     last_year_end = future_end_date.replace(year=future_end_date.year - 1)
                     demand_this_year = future_demand_period[future_demand_period[province_col] == region]['predicted_demand'].sum()
                     demand_last_year = historical_data[(historical_data['date'].between(last_year_start, last_year_end)) & (historical_data[province_col] == region)][qty_col].sum()
-                    change_pct = (demand_this_year - demand_last_year) / demand_last_year * 100 if demand_last_year > 0 else float('inf')
-                    st.metric(label=f"{region} 수요 변화 (작년 동기 대비)", value=f"{demand_this_year:,.0f} 개", delta=f"{change_pct:+.1f} %")
+                    
+                    delta_text = "작년 데이터 없음"
+                    if pd.notna(demand_this_year) and pd.notna(demand_last_year) and demand_last_year > 0:
+                        change_pct = (demand_this_year - demand_last_year) / demand_last_year * 100
+                        delta_text = f"{change_pct:+.1f} %"
+                        
+                    st.metric(label=f"{region} 수요 변화 (작년 동기 대비)", value=f"{demand_this_year:,.0f} 개", delta=delta_text)
     
     with col2:
         st.subheader("⚠️ 재고 과잉 경고 (유기산 리스크)")
         overstock_df = report_df[(report_df['리스크 지수(일)'] > 90) & (report_df['현재 재고'] > 0)].copy()
         if not overstock_df.empty:
             overstock_df = overstock_df.sort_values("리스크 지수(일)", ascending=False)
-            st.dataframe(overstock_df[['품목', '현재 재고', '리스크 지수(일)']].style.format({'현재 재고': '{:,.0f}', '리스크 지수(일)': '{:.1f}일'}), use_container_width=True)
+            st.dataframe(overstock_df[['품목', '현재 재고', '리스크 지수(일)']].style.format({'현재 재고': '{:,.0f}', '리스크 지수(일)': '{:.1f}일'}, na_rep='-'), use_container_width=True)
         else:
             st.info("현재 재고 과잉으로 판단되는 품목이 없습니다.")
 
@@ -203,7 +219,7 @@ def main():
     spring_demand_by_item = spring_demand.groupby(item_col)['predicted_demand'].sum()
     top_10_spring_items = spring_demand_by_item.nlargest(10).index
     top_10_df = report_df[report_df['품목'].isin(top_10_spring_items)].sort_values("생산 제언", ascending=False)
-    st.dataframe(top_10_df[['품목', '예상 수요(4주)', '권장 재고', '생산 제언']].style.format(formatter='{:,.0f}'), use_container_width=True)
+    st.dataframe(top_10_df[['품목', '예상 수요(4주)', '권장 재고', '생산 제언']].style.format(formatter='{:,.0f}', na_rep='-'), use_container_width=True)
 
     with st.expander("📄 전체 품목 생산 제언 보기 (필요량 많은 순)"):
         production_needed_df = report_df[report_df['생산 제언'] > 0].sort_values('생산 제언', ascending=False)
@@ -211,7 +227,7 @@ def main():
             st.dataframe(production_needed_df.style.format({
                 "예상 수요(4주)": '{:,.0f}', "권장 재고": '{:,.0f}', "현재 재고": '{:,.0f}', 
                 "생산 제언": '{:,.0f}', "리스크 지수(일)": '{:.1f}'
-            }), use_container_width=True)
+            }, na_rep='-'), use_container_width=True)
         else:
             st.success("현재 모든 품목의 재고가 충분하여 추가 생산이 필요한 항목은 없습니다.")
 
