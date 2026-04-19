@@ -37,7 +37,7 @@ def train_delivery_model():
         print(" -> 먼저 python src/integrate_features.py 를 실행하여 데이터를 생성하세요.")
         return
 
-    df = pd.read_csv(FINAL_TRAINING_DATA, encoding='utf-8-sig')
+    df = pd.read_csv(FINAL_TRAINING_DATA, encoding='utf-8-sig', low_memory=False)
     df['date'] = pd.to_datetime(df['date'])
     print(f"  [OK] 데이터 로드 완료: {df.shape[0]}행, {df.shape[1]}컬럼")
 
@@ -59,13 +59,11 @@ def train_delivery_model():
 
     # 학습 피처 정의: 원본 날짜와 타겟을 제외한 모든 컬럼 사용
     features = [col for col in df.columns if col not in [target_col, 'date']]
-    categorical_features = ['고객명', 'province']
 
-    # 범주형 변수가 피처 목록에 있는지 확인
-    for cat_col in categorical_features:
-        if cat_col not in features:
-            print(f"[오류] 범주형 피처 '{cat_col}'가 데이터에 없습니다. 피처 목록을 확인하세요.")
-            return
+    # 범주형 피처 자동 인식 (문자열 또는 카테고리 타입)
+    X_train_temp = train_df[features]
+    categorical_features = X_train_temp.select_dtypes(include=['object', 'category']).columns.tolist()
+    print(f"  [OK] 자동 인식된 범주형 피처: {categorical_features}")
 
     X_train = train_df[features]
     y_train = train_df[target_col]
