@@ -141,15 +141,17 @@ class InventoryOptimizerV4:
         # 모델이 '고객명' 피처를 사용하므로, 대표값으로 설정
         future_df['고객명'] = 'dummy_customer'
 
-        # 4. 2026년 기상 데이터를 2027년에 매핑
-        last_year_weather = self.historical_data[self.historical_data['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
+        # 4. 2026년 기상 데이터를 2027년에 매핑 (중복 조인 방지 로직)
         weather_cols = ['avg_temp', 'min_temp', 'max_temp', 'precip']
-        
+        # historical_data에서 기상 정보만 추출하여 중복 제거
+        weather_source = self.historical_data[['date', 'stn_id'] + weather_cols].drop_duplicates()
+        last_year_weather = weather_source[weather_source['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
+
         # 날짜의 '월-일'을 키로 사용하여 매핑
         last_year_weather['month_day'] = last_year_weather['date'].dt.strftime('%m-%d')
         future_df['month_day'] = future_df['date'].dt.strftime('%m-%d')
         
-        # 기상 데이터는 지점(stn_id)별로 매핑되어야 함
+        # 기상 데이터는 지점(stn_id)별로 하루에 하나만 존재해야 함
         weather_to_map = last_year_weather[['stn_id', 'month_day'] + weather_cols].drop_duplicates(subset=['stn_id', 'month_day'])
         
         future_df = pd.merge(future_df, weather_to_map, on=['stn_id', 'month_day'], how='left')

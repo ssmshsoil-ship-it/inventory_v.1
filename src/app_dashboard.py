@@ -99,10 +99,14 @@ def prepare_future_features(_historical_data, _model, item_col, province_col):
     # 모델이 '고객명' 피처를 사용하므로, 대표값으로 설정
     future_df['고객명'] = 'dummy_customer'
 
-    last_year_weather = _historical_data[_historical_data['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
+    # 2026년 기상 데이터를 2027년에 매핑 (중복 조인 방지)
     weather_cols = ['avg_temp', 'min_temp', 'max_temp', 'precip']
+    weather_source = _historical_data[['date', 'stn_id'] + weather_cols].drop_duplicates()
+    last_year_weather = weather_source[weather_source['date'].dt.year == (SIMULATION_YEAR - 1)].copy()
+
     last_year_weather['month_day'] = last_year_weather['date'].dt.strftime('%m-%d')
     future_df['month_day'] = future_df['date'].dt.strftime('%m-%d')
+    
     weather_to_map = last_year_weather[['stn_id', 'month_day'] + weather_cols].drop_duplicates(subset=['stn_id', 'month_day'])
     future_df = pd.merge(future_df, weather_to_map, on=['stn_id', 'month_day'], how='left')
     future_df[weather_cols] = future_df.groupby('stn_id')[weather_cols].transform(lambda x: x.ffill().bfill())
@@ -219,6 +223,12 @@ def main():
     spring_demand_by_item = spring_demand.groupby(item_col)['predicted_demand'].sum()
     top_10_spring_items = spring_demand_by_item.nlargest(10).index
     top_10_df = report_df[report_df['품목'].isin(top_10_spring_items)].sort_values("생산 제언", ascending=False)
+    
+    # 포맷 에러 방지를 위해 숫자형으로 변환
+    numeric_cols = ['예상 수요(4주)', '권장 재고', '생산 제언']
+    for col in numeric_cols:
+        top_10_df[col] = pd.to_numeric(top_10_df[col], errors='coerce').fillna(0)
+        
     st.dataframe(top_10_df[['품목', '예상 수요(4주)', '권장 재고', '생산 제언']].style.format(formatter='{:,.0f}', na_rep='-'), use_container_width=True)
 
     with st.expander("📄 전체 품목 생산 제언 보기 (필요량 많은 순)"):
