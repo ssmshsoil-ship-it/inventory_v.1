@@ -95,14 +95,19 @@ def integrate_and_engineer_features():
         # merge를 위해 날짜 형식 통일
         weather_df['date'] = pd.to_datetime(weather_df['date']).dt.normalize()
         
-        # 표준 컬럼명으로 변경하고 필요한 컬럼만 선택
-        weather_df = weather_df.rename(columns={
-            '평균기온(°C)': 'avg_temp', '일강수량(mm)': 'rainfall'
-        })
+        # 표준 영문 컬럼명으로 유연하게 변경하고 필요한 컬럼만 선택
+        weather_rename_map = {
+            '평균기온(°C)': 'avg_temp',
+            '평균 기온': 'avg_temp',
+            '일강수량(mm)': 'rainfall',
+            '강수량': 'rainfall',
+        }
+        weather_df.rename(columns=weather_rename_map, inplace=True)
         
         required_cols = ['date', 'stn_id', 'avg_temp', 'rainfall']
+        # 존재하는 컬럼만 선택
         weather_df = weather_df[[col for col in required_cols if col in weather_df.columns]]
-        print("\n- 3. 일별 기상 데이터 로드 완료")
+        print("\n- 3. 일별 기상 데이터 로드 및 정제 완료")
 
         # 4. 판매 데이터와 기상 데이터 결합
         final_df = pd.merge(sales_df, weather_df, on=['date', 'stn_id'], how='left')
@@ -133,7 +138,11 @@ def integrate_and_engineer_features():
         final_df.to_csv(FINAL_TRAINING_DATA, index=False, encoding='utf-8-sig')
         print(f"  [OK] 저장 완료: {FINAL_TRAINING_DATA}")
         print(f"  -> 최종 데이터: {final_df.shape[0]}행, {final_df.shape[1]}컬럼")
-        print(f"  -> 결과 (일부 컬럼):\n{final_df[['date', '고객명', 'province', 'avg_temp', 'rain_sum_3d', 'is_peak_season']].head().to_string()}")
+        
+        # 출력할 컬럼이 존재하는지 확인하여 KeyError 방지
+        display_cols = ['date', '고객명', 'province', 'avg_temp', 'rain_sum_3d', 'is_peak_season']
+        existing_display_cols = [col for col in display_cols if col in final_df.columns]
+        print(f"  -> 결과 (일부 컬럼):\n{final_df[existing_display_cols].head().to_string()}")
     except Exception as e:
         print(f"  [오류] 파일 저장 실패: {e}")
 
