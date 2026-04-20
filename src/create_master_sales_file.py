@@ -9,6 +9,31 @@
 import pandas as pd
 from pathlib import Path
 
+# 컬럼명 통일을 위한 매핑 (유사 이름 처리)
+COLUMN_MAP = {
+    '출고일자': ['출고일자', '출고 일자', '일자'],
+    '고객': ['고객', '고객사', '고객명'],
+    '품명': ['품명', '품목', '품목명'],
+    '규격': ['규격'],
+    '출고수량': ['출고수량', '수량', '출고 수량'],
+    '품번': ['품번', '품목코드'],
+    '비고': ['비고', '메모']
+}
+
+def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """데이터프레임의 컬럼명을 표준 컬럼명으로 변경합니다."""
+    rename_map = {}
+    df_columns = df.columns.tolist()
+    for standard_name, possible_names in COLUMN_MAP.items():
+        found_col = next((col for col in possible_names if col in df_columns), None)
+        if found_col and found_col != standard_name:
+            rename_map[found_col] = standard_name
+    
+    if rename_map:
+        print(f"    - 컬럼명 통일: {rename_map}")
+        return df.rename(columns=rename_map)
+    return df
+
 def create_master_sales_file():
     """'data/raw/sales'의 엑셀 파일을 병합하여 마스터 파일을 생성합니다."""
     
@@ -39,6 +64,7 @@ def create_master_sales_file():
         try:
             # .xlsx 파일은 'openpyxl' 엔진으로 읽는 것을 권장합니다.
             df = pd.read_excel(file, engine='openpyxl' if file.suffix == '.xlsx' else None)
+            df = standardize_columns(df)  # 컬럼명 표준화
             all_dfs.append(df)
             print(f"  - '{file.name}' 로드 완료.")
         except Exception as e:
