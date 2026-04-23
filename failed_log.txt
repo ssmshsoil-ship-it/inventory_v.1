@@ -1,7 +1,0 @@
-Failed to fetch data for period: 20190101 to 20190131
-Failed to fetch data for period: 20190201 to 20190228
-Failed to fetch data for period: 20190301 to 20190331
-Failed to fetch data for period: 20190401 to 20190430
-Failed to fetch data for period: 20190501 to 20190531
-Failed to fetch data for period: 20190601 to 20190630
-Failed to fetch data for period: 20190701 to 20190731

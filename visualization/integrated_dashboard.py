@@ -381,26 +381,23 @@ class DashboardGenerator:
                 type="date",
             ),
             yaxis=dict(
-                title="일별 출고량 (개)",
-                titlefont=dict(color=self.COLOR_BAR),
+                title=dict(text="일별 출고량 (개)", font=dict(color=self.COLOR_BAR)),
                 tickfont=dict(color=self.COLOR_BAR),
                 side="left",
             ),
             yaxis2=dict(
-                title="일평균기온 (°C)",
-                titlefont=dict(color=self.COLOR_TEMP),
+                title=dict(text="일평균기온 (°C)", font=dict(color=self.COLOR_TEMP)),
                 tickfont=dict(color=self.COLOR_TEMP),
                 overlaying="y",
                 side="right",
             ),
             yaxis3=dict(
-                title="뉴스 기사 수 (건)",
-                titlefont=dict(color=self.COLOR_NEWS),
+                title=dict(text="뉴스 기사 수 (건)", font=dict(color=self.COLOR_NEWS)),
                 tickfont=dict(color=self.COLOR_NEWS),
                 overlaying="y",
                 side="right",
                 anchor="free",
-                position=0.98,   # 가장 오른쪽에 배치
+                position=0.98,
             ),
             legend=dict(
                 orientation="h",
