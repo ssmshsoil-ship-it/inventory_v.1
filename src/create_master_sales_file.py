@@ -42,9 +42,6 @@ def create_master_sales_file():
     output_dir = Path("data/processed")
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    output_filename = "20190101-20260420 master_v1.1.xlsx"
-    output_path = output_dir / output_filename
-    
     if not sales_dir.exists():
         print(f"[오류] 영업 데이터 디렉토리를 찾을 수 없습니다: {sales_dir}")
         print(" -> 'data/raw/sales' 경로에 엑셀 파일이 있는지 확인해주세요.")
@@ -76,9 +73,30 @@ def create_master_sales_file():
 
     master_df = pd.concat(all_dfs, ignore_index=True)
     print(f"\n병합 완료. 총 {len(master_df)}개 행이 생성되었습니다.")
+    
+    # 4. 데이터 기본 정제 및 동적 파일명 생성
+    # - '출고일자'는 날짜 타입으로, '출고수량'은 숫자 타입으로 변환합니다.
+    if '출고일자' in master_df.columns:
+        master_df['출고일자'] = pd.to_datetime(master_df['출고일자'], errors='coerce')
+        master_df.dropna(subset=['출고일자'], inplace=True)
+        
+    if '출고수량' in master_df.columns:
+        master_df['출고수량'] = pd.to_numeric(master_df['출고수량'], errors='coerce').fillna(0)
+
+    # - 데이터 기간을 바탕으로 파일명 동적 생성
+    output_filename = "master_v1.1.xlsx" # 기본 파일명
+    if '출고일자' in master_df.columns and not master_df.empty:
+        min_date = master_df['출고일자'].min().strftime('%Y%m%d')
+        max_date = master_df['출고일자'].max().strftime('%Y%m%d')
+        output_filename = f"{min_date}-{max_date} master_v1.1.xlsx"
+        print(f"  - 데이터 기간을 바탕으로 동적 파일명 생성: {output_filename}")
+    else:
+        print("[경고] 유효한 '출고일자'가 없어 기본 파일명을 사용합니다.")
+        
+    output_path = output_dir / output_filename
     print(f"병합된 전체 컬럼 목록: {master_df.columns.tolist()}")
 
-    # 4. 요청된 컬럼 순서로 재정렬하고, 해당 컬럼만 선택
+    # 5. 요청된 컬럼 순서로 재정렬하고, 해당 컬럼만 선택
     desired_columns = ['출고일자', '고객', '품명', '규격', '출고수량', '품번', '비고']
     
     # 원본 데이터에 존재하는 컬럼만 필터링하여 순서대로 정렬
@@ -88,10 +106,15 @@ def create_master_sales_file():
     if missing_cols:
         print(f"[경고] 요청된 컬럼 중 일부가 원본 데이터에 없습니다: {list(missing_cols)}")
 
-    final_df = master_df[final_columns]
+    final_df = master_df[final_columns].copy()
+
+    # 출고일자를 'YYYY-MM-DD' 형식으로 변경 (시간 정보 제거)
+    if '출고일자' in final_df.columns:
+        final_df['출고일자'] = final_df['출고일자'].dt.date
+
     print(f"\n최종 선택 및 재정렬된 컬럼: {final_df.columns.tolist()}")
 
-    # 5. 결과 저장
+    # 6. 결과 저장
     try:
         final_df.to_excel(output_path, index=False, engine='openpyxl')
         print("\n" + "="*50)
