@@ -134,9 +134,16 @@ def load_config():
 # ── 운영시간 체크 ──────────────────────────────────────────
 def is_working_hours():
     now = datetime.now()
-    start = now.replace(hour=7, minute=30, second=0, microsecond=0)
+    start = now.replace(hour=7, minute=0, second=0, microsecond=0)
     end   = now.replace(hour=20, minute=0, second=0, microsecond=0)
     return start <= now < end
+
+def get_interval():
+    h = datetime.now().hour
+    if 7 <= h < 8:   return 30
+    if 8 <= h < 17:  return 15
+    if 17 <= h < 20: return 30
+    return 30
 
 def wait_until_morning(token, chat_id):
     from datetime import timedelta
@@ -677,8 +684,10 @@ def main():
             config = load_config()
             continue
 
+        interval = get_interval()
+
         try:
-            print(f"\n[{ts()}] ─── 데이터 수집 시작 ───")
+            print(f"\n[{ts()}] ─── 데이터 수집 시작 (간격: {interval}분) ───")
             all_stock_map, all_ship_rows, all_inbound_rows = asyncio.run(run_once(config))
 
             if all_stock_map:
@@ -711,6 +720,7 @@ def main():
             print(f"[{ts()}] ❌ 오류: {e}")
             telegram(token, chat_id, f"⚠️ <b>오류</b>\n{e}\n🕐 {now_str()}")
 
+        interval = get_interval()
         print(f"[{ts()}] {interval}분 후 다음 체크...\n")
         time.sleep(interval * 60)
 
