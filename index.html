@@ -55,6 +55,13 @@ window.addEventListener('keydown', function(e) { if(e.key==='Enter' && document.
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;background:#f1f5f9;height:100dvh;display:flex;flex-direction:column;overflow:hidden;}
+.co-sh{background:#dbeafe;color:#1d4ed8;font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;}
+.co-dd{background:#d1fae5;color:#065f46;font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;}
+.prod-item.border-sh{border-left:3px solid #1d4ed8;}
+.prod-item.border-dd{border-left:3px solid #059669;}
+.remain-ok{color:#059669;font-size:8px;font-weight:700;}
+.remain-low{color:#d97706;font-size:8px;font-weight:700;}
+.remain-neg{color:#dc2626;font-size:8px;font-weight:700;}
 button,input,select,textarea{font-family:inherit;}
 ::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
@@ -698,6 +705,18 @@ function todayStr(){return new Date().toLocaleDateString('ko-KR',{year:'numeric'
 function getIsoDate(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function nowStr(){var d=new Date();return(d.getMonth()+1)+'/'+d.getDate()+' '+(d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes();}
 function pKey(id){return 'prod_'+id;}
+function findRemainStock(prodName){
+  if(!prodName)return null;
+  var nm=prodName.replace(/\s/g,'').slice(0,6);
+  var p=PRODUCTS.find(function(p){return p.name.replace(/\s/g,'').slice(0,6)===nm;});
+  return p?getStock(p):null;
+}
+function remainHtml(prodName,qty){
+  var st=findRemainStock(prodName);
+  if(st===null)return'<b>'+esc(qty||'')+'</b>';
+  var cls=st<0?'remain-neg':st<200?'remain-low':'remain-ok';
+  return'<b>'+esc(qty||'')+'</b><br><span class="'+cls+'">(잔:'+st.toLocaleString()+')</span>';
+}
 function getStock(p){var v=S.fbStocks[p.id];return(v!==undefined&&v!==null&&v!=='')?Number(v):Number(p.stock);}
 function getComments(id){var o=(S.fbData[pKey(id)]&&S.fbData[pKey(id)].comments)||{};return Object.keys(o).filter(function(k){return o[k]!==null;}).map(function(k){return Object.assign({_key:k},o[k]);}).sort(function(a,b){return(a.ts||0)-(b.ts||0);});}
 function getPlans(id){var o=(S.fbData[pKey(id)]&&S.fbData[pKey(id)].plans)||{};return Object.keys(o).filter(function(k){return o[k]!==null;}).map(function(k){return Object.assign({_key:k},o[k]);}).sort(function(a,b){return(a.date||'')>(b.date||'')?1:-1;});}
@@ -802,7 +821,8 @@ function renderList(){
       filtered.forEach(function(p){
         var st=getStock(p),isNeg=st<0,isLow=st>=0&&st<100,active=S.selected===p.id;
         var updated=S.fbStocks[p.id]!==undefined,cm=getComments(p.id).length,pl=getPlans(p.id).length,hasNew=hasNewMap[p.id];
-        html+='<div class="prod-item'+(active?' active':'')+(isNeg&&!active?' urgent':'')+(hasNew?' has-new':'')+'" onclick="selectProduct('+p.id+')">'+
+        var coBorder=p.company==='성화'?' border-sh':' border-dd';
+        html+='<div class="prod-item'+(active?' active':'')+(isNeg&&!active?' urgent':'')+(hasNew?' has-new':'')+coBorder+'" onclick="selectProduct('+p.id+')">'+
           '<div class="prod-code">'+esc(p.code)+' · '+esc(p.loc)+'</div>'+
           '<div class="prod-name">'+esc(p.name)+(isNeg?' ⚠':'')+'</div>'+
           '<div class="prod-badges"><span class="stock-badge '+(isNeg?'badge-neg':isLow?'badge-low':'badge-ok')+'">'+st.toLocaleString()+' '+p.unit+'</span>'+
@@ -977,7 +997,8 @@ function renderInbound(){
   if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
   tbody.innerHTML=filtered.map(function(r){
-    return'<tr><td style="color:#475569;white-space:nowrap;">'+esc(r.입고일자||'')+'</td><td style="color:#94a3b8;font-size:9px;">'+esc(r.품번||'')+'</td><td style="font-weight:600;">'+esc(r.품명||'')+'</td><td style="color:#64748b;">'+esc(r.규격||'')+'</td><td style="font-weight:700;color:#059669;text-align:right;">'+esc(r.입고수량||'')+'</td><td style="color:#64748b;">'+esc(r.입고장소||'')+'</td><td style="color:#94a3b8;font-size:9px;">'+esc(r.비고||'')+'</td></tr>';
+    var ibCo=r.회사==='대동산업'?'co-dd':'co-sh';
+    return'<tr><td style="color:#475569;white-space:nowrap;">'+esc(r.입고일자||'')+'</td><td><span class="'+ibCo+'">'+esc(r.회사||'')+'</span></td><td style="color:#94a3b8;font-size:9px;">'+esc(r.품번||'')+'</td><td style="font-weight:600;">'+esc(r.품명||'')+'</td><td style="color:#64748b;">'+esc(r.규격||'')+'</td><td style="font-weight:700;color:#059669;text-align:right;">'+esc(r.입고수량||'')+'</td><td style="color:#64748b;">'+esc(r.입고장소||'')+'</td><td style="color:#94a3b8;font-size:9px;">'+esc(r.비고||'')+'</td></tr>';
   }).join('');
 }
 
@@ -1007,12 +1028,15 @@ function renderShipments(){
   if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
   tbody.innerHTML=filtered.map(function(r,i){
-    return'<tr onclick="toggleShipRow(this,'+i+')" id="ship-row-'+i+'">'
+    var shCo=r.회사==='대동산업'?'co-dd':'co-sh';
+    var rowBg=r.회사==='대동산업'?'#f0fdf4':'#eff6ff';
+    return'<tr onclick="toggleShipRow(this,'+i+')" id="ship-row-'+i+'" style="background:'+rowBg+';">'
       +'<td style="white-space:nowrap;color:#475569;font-size:9px;">'+esc(r.출고일자||'')+'</td>'
+      +'<td><span class="'+shCo+'">'+esc(r.회사||'')+'</span></td>'
       +'<td style="font-weight:600;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.고객||'')+'</td>'
       +'<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.품명||'')+'</td>'
       +'<td style="color:#64748b;font-size:9px;">'+esc(r.규격||'')+'</td>'
-      +'<td style="font-weight:700;color:#0369a1;text-align:right;font-size:9px;">'+esc(r.단가||'')+'</td>'
+      +'<td style="text-align:right;font-size:9px;line-height:1.3;">'+remainHtml(r.품명,r.출고수량)+'</td>'
       +'<td style="color:#94a3b8;font-size:9px;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.비고||'')+'</td>'
       +'<td style="color:#64748b;font-size:9px;">'+esc(r.출고장소||'')+'</td>'
       +'</tr>'

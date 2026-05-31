@@ -205,7 +205,8 @@ def parse_inventory(filepath):
         print(f"[{ts()}] 현재고 헤더 못 찾음"); return {}
     code_col  = header["품번"]
     stock_col = header["기말재고"]
-    excel_map = {}
+    loc_col   = header.get("장소") or header.get("창고") or header.get("사업장") or None
+    excel_map = {}  # (code, loc) -> stock 또는 code -> stock
     for row in rows[data_start:]:
         if not any(row): continue
         code_raw  = str(row[code_col]).strip()  if row[code_col]  is not None else ""
@@ -214,13 +215,17 @@ def parse_inventory(filepath):
         try:
             code  = code_raw.zfill(8)
             stock = int(float(str(stock_raw).replace(",", "")))
-            excel_map[code] = stock
+            loc_raw = str(row[loc_col]).strip() if loc_col and row[loc_col] else ""
+            key = (code, loc_raw) if loc_raw else code
+            excel_map[key] = stock
         except: continue
     stock_map = {}
     for (pid, code, name, loc) in PRODUCTS:
-        if code in excel_map:
+        if (code, loc) in excel_map:
+            stock_map[pid] = excel_map[(code, loc)]
+        elif code in excel_map:
             stock_map[pid] = excel_map[code]
-    print(f"[{ts()}] 현재고 파싱: {len(excel_map)}개 → {len(stock_map)}개 매칭")
+    print(f"[{ts()}] 현재고 파싱: {len(excel_map)}개 → {len(stock_map)}개 매칭 (장소컬럼: {'있음' if loc_col else '없음'})")
     return stock_map
 
 # ── 엑셀 파싱: 출고현황 ──────────────────────────────────
@@ -457,7 +462,7 @@ async def pw_switch_company(page, company_text):
 
 
 # ── Playwright: 엑셀 다운로드 ────────────────────────────
-async def pw_download_excel(page, page_url, label=""):
+async def pw_download_excel(page, page_url, label="", click_tab=None):
     print(f"[{ts()}] [{label}] 페이지 이동...")
     await page.goto(page_url)
     await page.wait_for_timeout(5000)
@@ -478,6 +483,16 @@ async def pw_download_excel(page, page_url, label=""):
             except: pass
 
         await page.wait_for_timeout(1000)
+
+        # 탭 클릭 (장소/창고 탭)
+        if click_tab:
+            try:
+                tab = page.get_by_text(click_tab, exact=True).first
+                if await tab.is_visible(timeout=3000):
+                    await tab.click()
+                    await page.wait_for_timeout(2000)
+                    print(f"[{ts()}] [{label}] 탭 클릭: {click_tab}")
+            except: pass
 
         # JS에서 캔버스 좌표까지 한번에 가져오기 (stale 핸들 문제 방지)
         box = None
@@ -579,7 +594,7 @@ async def run_once(config):
             # 성화
             await pw_switch_company(page, shsoil)
 
-            f = await pw_download_excel(page, config["erp"]["inventory_url"], "성화현재고")
+            f = await pw_download_excel(page, config["erp"]["inventory_url"], "성화현재고", click_tab="장소")
             if f:
                 all_stock_map.update(parse_inventory(f))
                 try: os.remove(f)
@@ -588,6 +603,7 @@ async def run_once(config):
             f = await pw_download_excel(page, config["erp"]["shipment_url"], "성화출고")
             if f:
                 rows = parse_shipment(f)
+                for r in rows: r['회사'] = '성화'
                 print(f"[{ts()}] 성화 출고: {len(rows)}건")
                 all_ship_rows.extend(rows)
                 try: os.remove(f)
@@ -595,14 +611,16 @@ async def run_once(config):
 
             f = await pw_download_excel(page, config["erp"]["inbound_url"], "성화생산입고")
             if f:
-                all_inbound_rows.extend(parse_inbound(f))
+                rows = parse_inbound(f)
+                for r in rows: r['회사'] = '성화'
+                all_inbound_rows.extend(rows)
                 try: os.remove(f)
                 except: pass
 
             # 대동
             await pw_switch_company(page, daedong)
 
-            f = await pw_download_excel(page, config["erp"]["inventory_url"], "대동현재고")
+            f = await pw_download_excel(page, config["erp"]["inventory_url"], "대동현재고", click_tab="장소")
             if f:
                 all_stock_map.update(parse_inventory(f))
                 try: os.remove(f)
@@ -611,6 +629,7 @@ async def run_once(config):
             f = await pw_download_excel(page, config["erp"]["shipment_url"], "대동출고")
             if f:
                 rows = parse_shipment(f)
+                for r in rows: r['회사'] = '대동산업'
                 print(f"[{ts()}] 대동 출고: {len(rows)}건")
                 all_ship_rows.extend(rows)
                 try: os.remove(f)
@@ -618,7 +637,9 @@ async def run_once(config):
 
             f = await pw_download_excel(page, config["erp"]["inbound_url"], "대동생산입고")
             if f:
-                all_inbound_rows.extend(parse_inbound(f))
+                rows = parse_inbound(f)
+                for r in rows: r['회사'] = '대동산업'
+                all_inbound_rows.extend(rows)
                 try: os.remove(f)
                 except: pass
 
