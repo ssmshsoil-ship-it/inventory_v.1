@@ -164,13 +164,14 @@ button,input,select,textarea{font-family:inherit;}
 @media(max-width:680px){.pc-close-btn{display:none!important;}}
 
 /* 최근 출고 */
-#recentShipWrap{background:#fff7ed;border-top:1px solid #fed7aa;padding:6px 10px;flex-shrink:0;max-height:130px;overflow-y:auto;display:none;}
-.rs-title{font-size:9px;font-weight:700;color:#92400e;margin-bottom:4px;}
-.rs-row{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid #fde68a;font-size:9px;}
+#recentShipWrap{background:#fff7ed;border-top:1px solid #fed7aa;padding:4px 8px;flex-shrink:0;max-height:200px;overflow-y:auto;display:none;}
+.rs-title{font-size:9px;font-weight:700;color:#92400e;margin-bottom:3px;}
+.rs-row{display:grid;grid-template-columns:58px 1fr 38px 50px;align-items:center;gap:3px;padding:2px 0;border-bottom:1px solid #fde68a;}
 .rs-row:last-child{border-bottom:none;}
-.rs-date{color:#78716c;font-size:8px;flex-shrink:0;width:55px;}
-.rs-cust{font-weight:600;color:#1e293b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.rs-qty{color:#059669;font-weight:700;flex-shrink:0;}
+.rs-date{color:#78716c;font-size:9px;}
+.rs-cust{font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;}
+.rs-qty{color:#059669;font-weight:700;text-align:right;font-size:10px;}
+.rs-price{color:#0369a1;font-weight:700;text-align:right;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* 출고일정 */
 #planSection{background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:6px 10px;flex-shrink:0;}
@@ -212,16 +213,24 @@ button,input,select,textarea{font-family:inherit;}
 #sendBtn{width:34px;height:34px;align-self:flex-end;background:#2563eb;border:none;border-radius:7px;cursor:pointer;font-size:14px;color:#fff;flex-shrink:0;}
 
 /* ═══ 탭1: 생산입고 ═══ */
-.tbl-filter{padding:6px 8px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;gap:5px;align-items:center;flex-shrink:0;flex-wrap:wrap;}
+.tbl-filter{padding:4px 6px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;gap:4px;align-items:center;flex-shrink:0;flex-wrap:nowrap;overflow-x:auto;}
 .tbl-filter label{font-size:9px;color:#64748b;font-weight:600;}
-.filter-btn{background:#2563eb;color:#fff;border:none;border-radius:5px;padding:3px 9px;font-size:10px;cursor:pointer;}
-.tbl-count{font-size:9px;color:#64748b;margin-left:2px;}
+.filter-btn{background:#2563eb;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:9px;cursor:pointer;flex-shrink:0;}
+.tbl-count{font-size:9px;color:#64748b;margin-left:1px;flex-shrink:0;}
 .tbl-wrap{flex:1;overflow:auto;}
-.data-tbl{width:100%;border-collapse:collapse;font-size:10px;white-space:nowrap;}
-.data-tbl th{background:#1e293b;color:#94a3b8;padding:4px 4px;font-weight:600;font-size:9px;position:sticky;top:0;z-index:1;text-align:left;white-space:nowrap;}
-.data-tbl td{padding:3px 4px;border-bottom:1px solid #f1f5f9;vertical-align:middle;font-size:9px;}
+.data-tbl{width:100%;border-collapse:collapse;font-size:9px;white-space:nowrap;}
+.data-tbl th{background:#1e293b;color:#94a3b8;padding:3px 3px;font-weight:600;font-size:8px;position:sticky;top:0;z-index:1;text-align:left;white-space:nowrap;}
+.data-tbl td{padding:2px 3px;border-bottom:1px solid #f1f5f9;vertical-align:middle;font-size:9px;}
 .data-tbl tr:hover td{background:#f8fafc;}
 .tbl-empty{padding:36px;text-align:center;color:#94a3b8;font-size:11px;}
+/* 출고현황 확장행 */
+.ship-expand-row{background:#f8fafc;padding:0!important;}
+.ship-expand-inner{padding:8px 10px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;}
+.ship-expand-field{display:flex;flex-direction:column;gap:1px;}
+.ship-expand-label{font-size:8px;color:#94a3b8;}
+.ship-expand-val{font-size:12px;font-weight:600;color:#1e293b;word-break:break-all;}
+.ship-expand-full{grid-column:1/-1;}
+tr.ship-row-open td{background:#fffbeb!important;}
 
 /* ═══ 탭3: 출고협의 달력 ═══ */
 .sch-header{padding:5px 8px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;gap:5px;}
@@ -417,7 +426,7 @@ button,input,select,textarea{font-family:inherit;}
           <div id="prodCards"></div>
         </div>
         <div id="recentShipWrap">
-          <div class="rs-title">🚚 최근 7일 출고</div>
+          <div class="rs-title">🚚 최근 10일 출고</div>
           <div id="recentShipList"></div>
         </div>
         <div id="planSection">
@@ -457,7 +466,14 @@ button,input,select,textarea{font-family:inherit;}
   <div class="tbl-wrap">
     <table class="data-tbl">
       <thead><tr>
-        <th>입고일자</th><th>품번</th><th>품명</th><th>규격</th><th>입고수량</th><th>입고장소</th><th>비고</th>
+        <th style="padding:3px 3px;width:72px;">입고일자</th>
+        <th style="padding:3px 3px;width:30px;">회사</th>
+        <th style="padding:3px 3px;width:56px;">품번</th>
+        <th style="padding:3px 3px;">품명</th>
+        <th style="padding:3px 3px;width:48px;">규격</th>
+        <th style="padding:3px 3px;width:38px;text-align:right;">수량</th>
+        <th style="padding:3px 3px;width:56px;">입고장소</th>
+        <th style="padding:3px 3px;width:48px;">비고</th>
       </tr></thead>
       <tbody id="ibBody"></tbody>
     </table>
@@ -480,7 +496,7 @@ button,input,select,textarea{font-family:inherit;}
     <table class="data-tbl">
       <thead>
         <tr id="shipHeadFilter" style="display:none;background:#f8fafc;">
-          <td colspan="7" style="padding:3px 4px;">
+          <td colspan="8" style="padding:3px 4px;">
             <div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap;">
               <input type="text" id="fDate" placeholder="날짜" oninput="applyShipFilter()" style="width:80px;border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px;font-size:9px;">
               <input type="text" id="fCust" placeholder="고객" oninput="applyShipFilter()" style="width:60px;border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px;font-size:9px;">
@@ -491,8 +507,13 @@ button,input,select,textarea{font-family:inherit;}
           </td>
         </tr>
         <tr>
-          <th onclick="toggleShipFilter()" style="cursor:pointer;user-select:none;">출고일자▼</th>
-          <th>고객</th><th>품명</th><th>규격</th><th>단가</th><th>비고</th><th>출고장소</th>
+          <th onclick="toggleShipFilter()" style="cursor:pointer;user-select:none;padding:3px 3px;width:72px;">출고일자▼</th>
+          <th style="padding:3px 3px;width:65px;">고객</th>
+          <th style="padding:3px 3px;">품명</th>
+          <th style="padding:3px 3px;width:45px;">규격</th>
+          <th style="padding:3px 3px;width:42px;text-align:right;">단가</th>
+          <th style="padding:3px 3px;width:50px;">비고</th>
+          <th style="padding:3px 3px;width:55px;">출고장소</th>
         </tr>
       </thead>
       <tbody id="shipBody"></tbody>
@@ -697,7 +718,7 @@ function sendPush(title,body,tags){try{fetch('https://ntfy.sh/shsoil_inventory',
 
 var USERS={'사장':{color:'#b45309',bg:'#fef3c7',short:'사'},'박성수':{color:'#0369a1',bg:'#e0f2fe',short:'박'},'백현숙':{color:'#1d4ed8',bg:'#dbeafe',short:'백'},'최윤철':{color:'#7c3aed',bg:'#ede9fe',short:'최'},'김대희':{color:'#065f46',bg:'#d1fae5',short:'김'},'송성민':{color:'#be185d',bg:'#fce7f3',short:'송'}};
 var TYPE_META={discuss:{label:'협의',bg:'#dbeafe',color:'#1d4ed8'},confirm:{label:'확정',bg:'#d1fae5',color:'#065f46'},urgent:{label:'긴급',bg:'#fee2e2',color:'#991b1b'},info:{label:'정보',bg:'#f3f4f6',color:'#374151'}};
-var S={selected:null,user:'사장',msgType:'discuss',fbData:{},fbStocks:{},fbMeta:null,fbShipments:[],fbInbound:[],modalEdits:{},seenKeys:{},replyTo:null,lastFetch:0,notices:[],editingKeys:{},isSaving:0,schUserFilter:'전체',calYear:new Date().getFullYear(),calMonth:new Date().getMonth(),calSelectedDate:null};
+var S={selected:null,user:'사장',msgType:'discuss',fbData:{},fbStocks:{},fbMeta:null,fbShipments:[],fbInbound:[],modalEdits:{},seenKeys:{},replyTo:null,lastFetch:0,notices:[],editingKeys:{},isSaving:0,schUserFilter:'전체',calYear:new Date().getFullYear(),calMonth:new Date().getMonth(),calSelectedDate:null,expandedShipRows:new Set()};
 var uploadChanges={};
 
 function isMobile(){return window.innerWidth<=680;}
@@ -865,16 +886,26 @@ function renderPanel(){
     {l:'기말재고',v:st.toLocaleString()+' '+p.unit,c:sc},
     {l:'규격',v:p.spec,c:'#374151'},{l:'메모',v:cm.length+'건',c:'#374151'},{l:'일정',v:pl.length+'건',c:'#374151'}
   ].map(function(x){return'<div class="info-card"><label>'+x.l+'</label><div class="val" style="color:'+x.c+'">'+x.v+'</div></div>';}).join('');
-  // 최근 3일 출고
+  // 최근 10일 출고
   var wrap=document.getElementById('recentShipWrap');
   var ships=S.fbShipments;
   if(Array.isArray(ships)&&ships.length){
-    var d3=new Date();d3.setDate(d3.getDate()-7);
-    var d3s=d3.toISOString().split('T')[0];
-    var matched=ships.filter(function(s){return s.품명&&s.품명.indexOf(p.name.slice(0,4))>=0&&s.출고일자&&s.출고일자>=d3s;}).sort(function(a,b){return(b.출고일자||'')>(a.출고일자||'')?1:-1;}).slice(0,5);
+    var d10=new Date();d10.setDate(d10.getDate()-10);
+    var d10s=d10.toISOString().split('T')[0];
+    var pname=(p.name||'').slice(0,5);
+    var matched=ships.filter(function(s){return s.품명&&s.품명.indexOf(pname)>=0&&s.출고일자&&s.출고일자>=d10s;}).sort(function(a,b){return(b.출고일자||'')>(a.출고일자||'')?1:-1;}).slice(0,10);
     if(matched.length){
       wrap.style.display='block';
-      document.getElementById('recentShipList').innerHTML=matched.map(function(s){return'<div class="rs-row"><span class="rs-date">'+esc(s.출고일자||'')+'</span><span class="rs-cust">'+esc(s.고객||'')+'</span><span class="rs-qty">'+esc(s.출고수량||'')+'</span></div>';}).join('');
+      var selProd=PRODUCTS.filter(function(x){return x.id===S.selected;})[0];
+      var unit=selProd?selProd.unit:'';
+      document.getElementById('recentShipList').innerHTML=matched.map(function(s){
+        return'<div class="rs-row">'
+          +'<span class="rs-date">'+esc(s.출고일자||'')+'</span>'
+          +'<span class="rs-cust">'+esc(s.고객||'')+'</span>'
+          +'<span class="rs-qty">'+esc(s.출고수량||'')+unit+'</span>'
+          +'<span class="rs-price">'+esc(s.단가||'')+'</span>'
+          +'</div>';
+      }).join('');
     }else{wrap.style.display='none';}
   }else{wrap.style.display='none';}
   // 출고일정
@@ -998,7 +1029,16 @@ function renderInbound(){
   empty.style.display='none';
   tbody.innerHTML=filtered.map(function(r){
     var ibCo=r.회사==='대동산업'?'co-dd':'co-sh';
-    return'<tr><td style="color:#475569;white-space:nowrap;">'+esc(r.입고일자||'')+'</td><td><span class="'+ibCo+'">'+esc(r.회사||'')+'</span></td><td style="color:#94a3b8;font-size:9px;">'+esc(r.품번||'')+'</td><td style="font-weight:600;">'+esc(r.품명||'')+'</td><td style="color:#64748b;">'+esc(r.규격||'')+'</td><td style="font-weight:700;color:#059669;text-align:right;">'+esc(r.입고수량||'')+'</td><td style="color:#64748b;">'+esc(r.입고장소||'')+'</td><td style="color:#94a3b8;font-size:9px;">'+esc(r.비고||'')+'</td></tr>';
+    return'<tr>'
+      +'<td style="color:#475569;white-space:nowrap;font-size:9px;padding:2px 3px;">'+esc(r.입고일자||'')+'</td>'
+      +'<td style="padding:2px 3px;"><span class="'+ibCo+'" style="font-size:8px;padding:1px 3px;">'+esc((r.회사||'').slice(0,2))+'</span></td>'
+      +'<td style="color:#94a3b8;font-size:8px;padding:2px 3px;">'+esc(r.품번||'')+'</td>'
+      +'<td style="font-weight:600;font-size:9px;padding:2px 3px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.품명||'')+'</td>'
+      +'<td style="color:#64748b;font-size:8px;padding:2px 3px;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.규격||'')+'</td>'
+      +'<td style="font-weight:700;color:#059669;text-align:right;font-size:9px;padding:2px 3px;">'+esc(r.입고수량||'')+'</td>'
+      +'<td style="color:#64748b;font-size:8px;padding:2px 3px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.입고장소||'')+'</td>'
+      +'<td style="color:#94a3b8;font-size:8px;padding:2px 3px;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.비고||'')+'</td>'
+      +'</tr>';
   }).join('');
 }
 
@@ -1027,29 +1067,35 @@ function renderShipments(){
   var tbody=document.getElementById('shipBody'),empty=document.getElementById('shipEmpty');
   if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
+  var expanded=S.expandedShipRows;
   tbody.innerHTML=filtered.map(function(r,i){
     var shCo=r.회사==='대동산업'?'co-dd':'co-sh';
     var rowBg=r.회사==='대동산업'?'#f0fdf4':'#eff6ff';
-    return'<tr onclick="toggleShipRow(this,'+i+')" id="ship-row-'+i+'" style="background:'+rowBg+';">'
-      +'<td style="white-space:nowrap;color:#475569;font-size:9px;">'+esc(r.출고일자||'')+'</td>'
-      +'<td><span class="'+shCo+'">'+esc(r.회사||'')+'</span></td>'
-      +'<td style="font-weight:600;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.고객||'')+'</td>'
-      +'<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.품명||'')+'</td>'
-      +'<td style="color:#64748b;font-size:9px;">'+esc(r.규격||'')+'</td>'
-      +'<td style="text-align:right;font-size:9px;line-height:1.3;">'+remainHtml(r.품명,r.출고수량)+'</td>'
-      +'<td style="color:#94a3b8;font-size:9px;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.비고||'')+'</td>'
-      +'<td style="color:#64748b;font-size:9px;">'+esc(r.출고장소||'')+'</td>'
+    var isOpen=expanded.has(i);
+    return'<tr onclick="toggleShipRow(this,'+i+')" id="ship-row-'+i+'" style="background:'+(isOpen?'#fffbeb':rowBg)+';cursor:pointer;">'
+      +'<td style="white-space:nowrap;color:#475569;font-size:9px;padding:2px 3px;">'+esc(r.출고일자||'')+'</td>'
+      +'<td style="padding:2px 3px;"><span class="'+shCo+'" style="font-size:8px;padding:1px 3px;">'+esc((r.회사||'').slice(0,2))+'</span></td>'
+      +'<td style="font-weight:600;font-size:9px;padding:2px 3px;max-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.고객||'')+'</td>'
+      +'<td style="font-size:9px;padding:2px 3px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.품명||'')+'</td>'
+      +'<td style="color:#64748b;font-size:8px;padding:2px 3px;max-width:45px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.규격||'')+'</td>'
+      +'<td style="text-align:right;font-size:9px;padding:2px 3px;line-height:1.3;">'+remainHtml(r.품명,r.출고수량)+'</td>'
+      +'<td style="color:#94a3b8;font-size:8px;padding:2px 3px;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.비고||'')+'</td>'
+      +'<td style="color:#64748b;font-size:8px;padding:2px 3px;max-width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.출고장소||'')+'</td>'
       +'</tr>'
-      +'<tr id="ship-expand-'+i+'" style="display:none;">'
-      +'<td colspan="7" class="ship-expand-row">'
-      +'📅 '+esc(r.출고일자||'')+' &nbsp;|&nbsp; '
-      +'👤 고객: <b>'+esc(r.고객||'')+'</b> &nbsp;|&nbsp; '
-      +'📦 품명: <b>'+esc(r.품명||'')+'</b> &nbsp;|&nbsp; '
-      +'📐 규격: '+esc(r.규격||'')+' &nbsp;|&nbsp; '
-      +'🔢 수량: <b>'+esc(r.출고수량||'')+'</b> &nbsp;|&nbsp; '
-      +'💰 단가: <b>'+esc(r.단가||'')+'</b><br>'
-      +'📝 비고: '+esc(r.비고||'-')+' &nbsp;|&nbsp; '
-      +'📍 출고장소: '+esc(r.출고장소||'-')
+      +'<tr id="ship-expand-'+i+'" style="display:'+(isOpen?'table-row':'none')+';">'
+      +'<td colspan="8" class="ship-expand-row">'
+      +'<div class="ship-expand-inner">'
+      +'<div class="ship-expand-field"><span class="ship-expand-label">📅 출고일자</span><span class="ship-expand-val">'+esc(r.출고일자||'')+'</span></div>'
+      +'<div class="ship-expand-field"><span class="ship-expand-label">🏢 회사</span><span class="ship-expand-val" style="font-size:11px;"><span class="'+shCo+'">'+esc(r.회사||'')+'</span></span></div>'
+      +'<div class="ship-expand-field ship-expand-full"><span class="ship-expand-label">👤 고객</span><span class="ship-expand-val">'+esc(r.고객||'')+'</span></div>'
+      +'<div class="ship-expand-field ship-expand-full"><span class="ship-expand-label">📦 품명</span><span class="ship-expand-val">'+esc(r.품명||'')+'</span></div>'
+      +'<div class="ship-expand-field"><span class="ship-expand-label">📐 규격</span><span class="ship-expand-val" style="font-size:11px;">'+esc(r.규격||'-')+'</span></div>'
+      +'<div class="ship-expand-field"><span class="ship-expand-label">🔢 출고수량</span><span class="ship-expand-val" style="color:#059669;">'+esc(r.출고수량||'')+'</span></div>'
+      +'<div class="ship-expand-field"><span class="ship-expand-label">💰 단가</span><span class="ship-expand-val" style="color:#0369a1;">'+esc(r.단가||'')+'</span></div>'
+      +'<div class="ship-expand-field"><span class="ship-expand-label">👨‍💼 담당자</span><span class="ship-expand-val">'+esc(r.사원||r.담당자||'-')+'</span></div>'
+      +'<div class="ship-expand-field"><span class="ship-expand-label">📍 출고장소</span><span class="ship-expand-val">'+esc(r.출고장소||'-')+'</span></div>'
+      +'<div class="ship-expand-field ship-expand-full"><span class="ship-expand-label">📝 비고</span><span class="ship-expand-val" style="font-size:11px;font-weight:400;color:#475569;">'+esc(r.비고||'-')+'</span></div>'
+      +'</div>'
       +'</td></tr>';
   }).join('');
 }
@@ -1084,9 +1130,17 @@ function clearShipFilter(){
 function toggleShipRow(tr, idx) {
   var expRow = document.getElementById('ship-expand-'+idx);
   if(!expRow) return;
-  var isOpen = expRow.style.display !== 'none';
-  expRow.style.display = isOpen ? 'none' : 'table-row';
-  tr.classList.toggle('expanded', !isOpen);
+  var isOpen = S.expandedShipRows.has(idx);
+  if(isOpen){
+    S.expandedShipRows.delete(idx);
+    expRow.style.display='none';
+    tr.style.background=tr.dataset.bg||'';
+  }else{
+    S.expandedShipRows.add(idx);
+    expRow.style.display='table-row';
+    tr.style.background='#fffbeb';
+    setTimeout(function(){ expRow.scrollIntoView({behavior:'smooth', block:'nearest'}); }, 80);
+  }
 }
 
 // ── 탭3 출고협의 달력 ──
