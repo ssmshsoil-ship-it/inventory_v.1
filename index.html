@@ -456,9 +456,9 @@ tr.ship-row-open td{background:#fffbeb!important;}
 <!-- 탭1 생산입고 -->
 <div id="tab1" class="tab-pane">
   <div class="tbl-filter" style="gap:3px;padding:4px 6px;flex-wrap:nowrap;overflow-x:auto;">
-    <input type="date" id="ibFrom" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;">
+    <input type="date" id="ibFrom" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;" onchange="renderInbound()">
     <span style="color:#94a3b8;font-size:9px;flex-shrink:0;">~</span>
-    <input type="date" id="ibTo" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;">
+    <input type="date" id="ibTo" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;" onchange="renderInbound()">
     <input type="text" id="ibSearch" class="form-input" placeholder="품명" style="width:60px;font-size:9px;padding:3px 4px;" oninput="renderInbound()">
     <button class="filter-btn" onclick="renderInbound()" style="padding:3px 7px;font-size:9px;flex-shrink:0;">조회</button>
     <span class="tbl-count" id="ibCount" style="font-size:9px;flex-shrink:0;"></span>
@@ -484,9 +484,9 @@ tr.ship-row-open td{background:#fffbeb!important;}
 <!-- 탭2 출고현황 -->
 <div id="tab2" class="tab-pane">
   <div class="tbl-filter" style="gap:3px;padding:4px 6px;flex-wrap:nowrap;overflow-x:auto;">
-    <input type="date" id="shipFrom" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;">
+    <input type="date" id="shipFrom" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;" onchange="S.expandedShipRows.clear();renderShipments()">
     <span style="color:#94a3b8;font-size:9px;flex-shrink:0;">~</span>
-    <input type="date" id="shipTo" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;">
+    <input type="date" id="shipTo" class="form-input" style="width:95px;font-size:9px;padding:3px 4px;" onchange="S.expandedShipRows.clear();renderShipments()">
     <input type="text" id="shipProd" class="form-input" placeholder="품명" style="width:55px;font-size:9px;padding:3px 4px;" oninput="renderShipments()">
     <input type="text" id="shipCustSearch" class="form-input" placeholder="고객초성" style="width:55px;font-size:9px;padding:3px 4px;" oninput="renderShipments()">
     <button class="filter-btn" onclick="renderShipments()" style="padding:3px 7px;font-size:9px;flex-shrink:0;">조회</button>
