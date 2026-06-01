@@ -496,7 +496,7 @@ tr.ship-row-open td{background:#fffbeb!important;}
     <table class="data-tbl">
       <thead>
         <tr id="shipHeadFilter" style="display:none;background:#f8fafc;">
-          <td colspan="8" style="padding:3px 4px;">
+          <td colspan="7" style="padding:3px 4px;">
             <div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap;">
               <input type="text" id="fDate" placeholder="날짜" oninput="applyShipFilter()" style="width:80px;border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px;font-size:9px;">
               <input type="text" id="fCust" placeholder="고객" oninput="applyShipFilter()" style="width:60px;border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px;font-size:9px;">
@@ -508,10 +508,10 @@ tr.ship-row-open td{background:#fffbeb!important;}
         </tr>
         <tr>
           <th onclick="toggleShipFilter()" style="cursor:pointer;user-select:none;padding:3px 3px;width:72px;">출고일자▼</th>
-          <th style="padding:3px 3px;width:65px;">고객</th>
+          <th style="padding:3px 3px;width:70px;">고객</th>
           <th style="padding:3px 3px;">품명</th>
           <th style="padding:3px 3px;width:45px;">규격</th>
-          <th style="padding:3px 3px;width:42px;text-align:right;">단가</th>
+          <th style="padding:3px 3px;width:50px;text-align:right;">수량(잔)</th>
           <th style="padding:3px 3px;width:50px;">비고</th>
           <th style="padding:3px 3px;width:55px;">출고장소</th>
         </tr>
@@ -889,10 +889,11 @@ function renderPanel(){
   // 최근 10일 출고
   var wrap=document.getElementById('recentShipWrap');
   var ships=S.fbShipments;
-  if(Array.isArray(ships)&&ships.length){
+  if(!Array.isArray(ships))ships=Object.values(ships||{});
+  if(ships.length){
     var d10=new Date();d10.setDate(d10.getDate()-10);
     var d10s=d10.toISOString().split('T')[0];
-    var pname=(p.name||'').slice(0,5);
+    var pname=(p.name||'').replace(/^(성화|대동)\s/,'').slice(0,4);
     var matched=ships.filter(function(s){return s.품명&&s.품명.indexOf(pname)>=0&&s.출고일자&&s.출고일자>=d10s;}).sort(function(a,b){return(b.출고일자||'')>(a.출고일자||'')?1:-1;}).slice(0,10);
     if(matched.length){
       wrap.style.display='block';
@@ -1006,9 +1007,8 @@ function delPlan(pid,key){
 
 // ── 탭1 생산입고 ──
 function initIbDates(){
-  var t=getIsoDate();var f=new Date();f.setDate(f.getDate()-30);
-  var fs=f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0');
-  if(!document.getElementById('ibFrom').value)document.getElementById('ibFrom').value=fs;
+  var t=getIsoDate();
+  if(!document.getElementById('ibFrom').value)document.getElementById('ibFrom').value='2026-01-01';
   if(!document.getElementById('ibTo').value)document.getElementById('ibTo').value=t;
 }
 function renderInbound(){
@@ -1044,9 +1044,8 @@ function renderInbound(){
 
 // ── 탭2 출고현황 ──
 function initShipDates(){
-  var t=getIsoDate();var f=new Date();f.setDate(f.getDate()-7);
-  var fs=f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0');
-  if(!document.getElementById('shipFrom').value)document.getElementById('shipFrom').value=fs;
+  var t=getIsoDate();
+  if(!document.getElementById('shipFrom').value)document.getElementById('shipFrom').value='2026-01-01';
   if(!document.getElementById('shipTo').value)document.getElementById('shipTo').value=t;
 }
 function renderShipments(){
@@ -1074,16 +1073,15 @@ function renderShipments(){
     var isOpen=expanded.has(i);
     return'<tr onclick="toggleShipRow(this,'+i+')" id="ship-row-'+i+'" style="background:'+(isOpen?'#fffbeb':rowBg)+';cursor:pointer;">'
       +'<td style="white-space:nowrap;color:#475569;font-size:9px;padding:2px 3px;">'+esc(r.출고일자||'')+'</td>'
-      +'<td style="padding:2px 3px;"><span class="'+shCo+'" style="font-size:8px;padding:1px 3px;">'+esc((r.회사||'').slice(0,2))+'</span></td>'
-      +'<td style="font-weight:600;font-size:9px;padding:2px 3px;max-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.고객||'')+'</td>'
-      +'<td style="font-size:9px;padding:2px 3px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.품명||'')+'</td>'
+      +'<td style="font-weight:600;font-size:9px;padding:2px 3px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.고객||'')+'</td>'
+      +'<td style="font-size:9px;padding:2px 3px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.품명||'')+'</td>'
       +'<td style="color:#64748b;font-size:8px;padding:2px 3px;max-width:45px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.규격||'')+'</td>'
       +'<td style="text-align:right;font-size:9px;padding:2px 3px;line-height:1.3;">'+remainHtml(r.품명,r.출고수량)+'</td>'
       +'<td style="color:#94a3b8;font-size:8px;padding:2px 3px;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.비고||'')+'</td>'
       +'<td style="color:#64748b;font-size:8px;padding:2px 3px;max-width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(r.출고장소||'')+'</td>'
       +'</tr>'
       +'<tr id="ship-expand-'+i+'" style="display:'+(isOpen?'table-row':'none')+';">'
-      +'<td colspan="8" class="ship-expand-row">'
+      +'<td colspan="7" class="ship-expand-row">'
       +'<div class="ship-expand-inner">'
       +'<div class="ship-expand-field"><span class="ship-expand-label">📅 출고일자</span><span class="ship-expand-val">'+esc(r.출고일자||'')+'</span></div>'
       +'<div class="ship-expand-field"><span class="ship-expand-label">🏢 회사</span><span class="ship-expand-val" style="font-size:11px;"><span class="'+shCo+'">'+esc(r.회사||'')+'</span></span></div>'
