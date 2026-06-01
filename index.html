@@ -59,9 +59,9 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif
 .co-dd{background:#d1fae5;color:#065f46;font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;white-space:nowrap;}
 .prod-item.border-sh{border-left:3px solid #1d4ed8;}
 .prod-item.border-dd{border-left:3px solid #059669;}
-.remain-ok{color:#059669;font-size:8px;font-weight:700;}
-.remain-low{color:#d97706;font-size:8px;font-weight:700;}
-.remain-neg{color:#dc2626;font-size:8px;font-weight:700;}
+.remain-ok{color:#059669;font-size:9px;font-weight:700;}
+.remain-low{color:#d97706;font-size:9px;font-weight:700;}
+.remain-neg{color:#dc2626;font-size:9px;font-weight:700;}
 button,input,select,textarea{font-family:inherit;}
 ::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
@@ -735,7 +735,7 @@ function findRemainStock(prodName){
 function remainHtml(prodName,qty){
   var st=findRemainStock(prodName);
   if(st===null)return'<b>'+esc(qty||'')+'</b>';
-  var cls=st<0?'remain-neg':st<200?'remain-low':'remain-ok';
+  var cls=st<0?'remain-neg':'remain-ok';
   return'<b>'+esc(qty||'')+'</b><br><span class="'+cls+'">(잔:'+st.toLocaleString()+')</span>';
 }
 function getStock(p){var v=S.fbStocks[p.id];return(v!==undefined&&v!==null&&v!=='')?Number(v):Number(p.stock);}
